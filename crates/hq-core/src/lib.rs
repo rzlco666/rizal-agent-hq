@@ -178,6 +178,20 @@ pub struct EnvInfo {
     pub tailscale_muse_online: Option<bool>,
 }
 
+/// Rantai fallback pekerjaan OMP (aturan Rizal 2 Nov 2026, diperbarui
+/// 16:07 WIB): fallback utama = OpenCode Go (langganan $10/bln); cadangan
+/// terakhir = DeepSeek platform langsung (saldo dijaga, berhenti < $1).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FallbackInfo {
+    pub label: String,
+    pub model: String,
+    pub active: bool,
+    pub balance_usd: Option<f64>,
+    pub reserve_label: String,
+    pub reserve_balance_usd: Option<f64>,
+    pub note: String,
+}
+
 /// Snapshot lengkap yang dilayani API & dibaca semua panel.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -190,5 +204,6 @@ pub struct Snapshot {
     pub quotas: Vec<Quota>,
     pub total_usage: Usage,
     pub deepseek_balance_est: Option<f64>,
+    pub fallback: FallbackInfo,
     pub env: EnvInfo,
 }

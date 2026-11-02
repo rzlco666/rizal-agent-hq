@@ -839,6 +839,30 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
             snap.deepseek_balance_est = o.deepseek_balance;
         }
     }
+    // Fallback terakhir (aturan Rizal 2 Nov 2026): AKTIF bila ada kuota
+    // langganan yang jebol (>=100%) — pekerjaan OMP dialihkan ke DeepSeek tunai.
+    let jebol: Vec<String> = snap
+        .quotas
+        .iter()
+        .filter(|q| q.percent.map(|p| p >= 100.0).unwrap_or(false))
+        .map(|q| format!("{} {}", q.provider, q.label))
+        .collect();
+    snap.fallback = FallbackInfo {
+        label: "OpenCode Go · GLM 5.3 Flash".into(),
+        model: "opencode-go/glm-5.3-flash".into(),
+        active: !jebol.is_empty(),
+        balance_usd: None,
+        reserve_label: "DeepSeek langsung".into(),
+        reserve_balance_usd: snap.deepseek_balance_est,
+        note: if jebol.is_empty() {
+            "Siaga — jalur langganan utama masih tersedia. Bila tumbang: OpenCode Go dulu, DeepSeek langsung hanya cadangan terakhir.".into()
+        } else {
+            format!(
+                "AKTIF — kuota jebol: {}. Pekerjaan OMP dialihkan ke OpenCode Go (DeepSeek via Go masih terblokir region Global). Cadangan terakhir DeepSeek langsung — berhenti & lapor bila saldo < $1.",
+                jebol.join(", ")
+            )
+        },
+    };
     // Urutan tampil seragam: utama dulu (sesuai urutan registry), lalu worker, lalu mcp.
     snap.env = EnvInfo {
         hostname: pr.sys.hostname.clone(),

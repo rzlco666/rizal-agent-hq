@@ -54,12 +54,17 @@ async function alertAction(id, kind) {
 function renderQuotas(s) {
   const rows = s.quotas.filter(q => q.percent != null);
   if (!rows.length) { $('#quotas').innerHTML = '<p class="mut small">Belum terbaca.</p>'; return; }
+  const fb = s.fallback || {};
+  const fbHtml = fb.label ? `<div class="qrow" style="border:1px solid ${fb.active ? '#e5484d' : '#3a4152'};border-radius:8px;padding:6px 8px;margin-top:8px">
+      <div class="top"><span>⛑️ Fallback utama · ${esc(fb.label)}</span><b>${fb.active ? 'AKTIF' : 'Siaga'}</b></div>
+      <div class="mut small">${esc(fb.model || '')}${fb.reserve_label ? `<br>Cadangan terakhir: ${esc(fb.reserve_label)}${fb.reserve_balance_usd != null ? ' · saldo ±' + usd(fb.reserve_balance_usd) : ''}` : ''}<br>${esc(fb.note || '')}</div>
+    </div>` : '';
   $('#quotas').innerHTML = rows.map(q => `
     <div class="qrow">
       <div class="top"><span>${esc(q.provider)} · ${esc(q.label)}</span><b>${q.percent}%</b></div>
       <div class="bar"><i class="${q.percent >= 100 ? 'full' : q.percent >= 80 ? 'hot' : ''}" style="width:${Math.min(q.percent, 100)}%"></i></div>
       <div class="mut small">${esc(q.extra || '')}</div>
-    </div>`).join('');
+    </div>`).join('') + fbHtml;
 }
 
 function renderEnv(s) {

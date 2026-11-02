@@ -191,5 +191,7 @@ mod tests {
         assert_eq!(split_one("deepseek", "deepseek-v4-flash", 1.5), (1.5, 0.0));
         assert_eq!(split_one("openai-codex", "gpt-6.1-sol", 7.0), (0.0, 7.0));
         assert_eq!(split_one("opencode-zen", "deepseek-v4.1-flash-free", 0.0), (0.0, 0.0));
+        // OpenCode Go = langganan flat $10/bln: meteran stats-nya BAYANGAN, bukan tunai.
+        assert_eq!(split_one("opencode-go", "glm-5.3-flash", 1.0), (0.0, 1.0));
     }
 }

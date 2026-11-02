@@ -127,7 +127,7 @@ Spesifikasi produk lengkap: **[PRD.md](PRD.md)**.
 | M2 | Humanisasi sesi + worker per sesi + WebSocket | ✅ selesai, terverifikasi data asli |
 | M3 | Kantor 3D + view detail 5 tab | ✅ selesai, terverifikasi tangkapan layar data asli |
 | M4 | Alert Center + jembatan WhatsApp | ✅ Alert Center live; jembatan Kritis jalan tiap ±15 mnt (saluran WhatsApp aktif begitu akun tertaut) |
-| M5 | Rilis GitHub + pasang systemd + laporan harian | 🚧 berjalan |
+| M5 | Rilis GitHub + pasang systemd + laporan harian | ✅ live di WSL (port 8900) + repo publik; panel kuota menampilkan rantai fallback OpenCode Go → DeepSeek |
 
 ## 🤝 Berkontribusi
 
