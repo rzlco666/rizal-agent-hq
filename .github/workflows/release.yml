@@ -37,7 +37,7 @@ jobs:
           ls -la *.tar.gz
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: rizal-agent-hq-*.tar.gz
           generate_release_notes: true
