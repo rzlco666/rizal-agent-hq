@@ -8,9 +8,11 @@ OUT_DIR="$DEST/data/reports"
 mkdir -p "$OUT_DIR"
 DATE="$(date +%F)"
 OUT="$OUT_DIR/$DATE.md"
-curl -s -m 20 "http://127.0.0.1:$PORT/api/state" | python3 - "$OUT" << 'PYEOF'
+TMP_STATE="$(mktemp)"
+curl -s -m 20 "http://127.0.0.1:$PORT/api/state" -o "$TMP_STATE"
+python3 - "$OUT" "$TMP_STATE" << 'PYEOF'
 import json, sys, datetime
-s = json.load(sys.stdin)
+s = json.load(open(sys.argv[2]))
 out = sys.argv[1]
 def tok(n): return f"{n/1e6:.2f} jt" if n >= 1e6 else (f"{n/1e3:.1f} rb" if n >= 1e3 else str(n))
 def usd(n): return f"${n:.2f}"
@@ -39,4 +41,5 @@ for q in s["quotas"]:
 open(out, "w").write("\n".join(lines) + "\n")
 print(out)
 PYEOF
+rm -f "$TMP_STATE"
 echo "Laporan tertulis: $OUT"
