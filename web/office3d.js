@@ -168,7 +168,7 @@ const SLOTS = {
 for (let i = 0; i < 6; i++) SLOTS.overflow.push([-4 + i * 2.3, 11.6, Math.PI]);
 
 const ZONES = {
-  semua: { t: [0, 0], zoom: 0.74 },
+  semua: { t: [0, 0], zoom: 0.8 },
   Muse: { t: [-12.5, -8], zoom: 1.3 },
   utama: { t: [3.5, 3.2], zoom: 1.25 },
   workers: { t: [2.5, 7.6], zoom: 1.3 },
@@ -203,7 +203,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   const ISO_DIR = new THREE.Vector3(1, 1, 1).normalize();
   let camDir = ISO_DIR.clone();
   camera.position.copy(ISO_DIR).multiplyScalar(70);
-  camera.zoom = 0.74;
+  camera.zoom = 0.8;
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -411,8 +411,9 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
         : '';
       const actShort = actTxt.length > 46 ? actTxt.slice(0, 46) + '…' : actTxt;
       const actHtml = actShort ? `<small class="act">${actShort.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</small>` : '';
-      e.chip.innerHTML = `<i style="background:${dot}"></i>${a.emoji || ''} ${short}<small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
+      e.chip.innerHTML = `<span class="nm"><i style="background:${dot}"></i>${a.emoji || ''} ${short}</span><small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
       e.chip.style.opacity = a.status === 'offline' ? 0.55 : 1;
+      e._w = e.chip.offsetWidth || 120; e._h = e.chip.offsetHeight || 44;
     }
     for (const [id, e] of entries) {
       if (!seen.has(id)) {
@@ -424,18 +425,18 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   }
 
   // ===== kamera =====
-  let desired = { x: 0, z: 0, zoom: 0.74 };
+  let desired = { x: 0, z: 0, zoom: 0.8 };
   function focusAgent(id) {
     const e = entries.get(id);
     if (e) desired = { x: e.group.position.x, z: e.group.position.z, zoom: 1.75 };
   }
   function preset(name, agents) {
-    if (name === 'iso') { camDir = ISO_DIR.clone(); desired = { x: 0, z: 0, zoom: 0.74 }; return; }
+    if (name === 'iso') { camDir = ISO_DIR.clone(); desired = { x: 0, z: 0, zoom: 0.8 }; return; }
     if (name === 'atas') { camDir = new THREE.Vector3(0.001, 1, 0.35).normalize(); desired = { x: 0, z: 0, zoom: 0.8 }; return; }
     if (name === 'alert') {
       const bad = (agents || []).find(a => a.status === 'menunggu-rizal' || a.status === 'error');
       if (bad) { focusAgent(bad.id); return; }
-      desired = { x: 0, z: 0, zoom: 0.74 }; return;
+      desired = { x: 0, z: 0, zoom: 0.8 }; return;
     }
     const z = ZONES[name] || ZONES.semua;
     desired = { x: z.t[0], z: z.t[1], zoom: z.zoom };
@@ -573,6 +574,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
       if (c.position.x < -55) c.position.x = 55;
       c.userData.wheels.forEach(w => { w.rotation.z -= d.dir * 0.12; });
     }
+    const chipJobs = [];
     for (const e of entries.values()) {
       const a = e.agent, p = e.group.userData.parts || {};
       const ph = e.group.position.x * 1.7 + e.group.position.z;
@@ -620,12 +622,30 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
         v3.set(e.group.position.x, e.group.position.y + 2.1, e.group.position.z).project(camera);
         const w = stageEl.clientWidth, h = stageEl.clientHeight;
         if (v3.z > 1 || v3.x < -1.05 || v3.x > 1.05 || v3.y < -1.05 || v3.y > 1.05) e.chip.style.display = 'none';
-        else {
-          e.chip.style.display = 'block';
-          e.chip.style.left = ((v3.x * 0.5 + 0.5) * w) + 'px';
-          e.chip.style.top = ((-v3.y * 0.5 + 0.5) * h) + 'px';
-        }
+        else chipJobs.push({ e, x: (v3.x * 0.5 + 0.5) * w, bottom: (-v3.y * 0.5 + 0.5) * h, sh: h });
       }
+    }
+    // --- resolusi tabrakan chip: chip yang rect-nya bersinggungan digeser rapi ke bawah ---
+    chipJobs.sort((a, b) => a.bottom - b.bottom);
+    const placedRects = [];
+    for (const j of chipJobs) {
+      const cw = j.e._w || 120, chh = j.e._h || 44;
+      let bottom = j.bottom;
+      for (let tries = 0; tries < 12; tries++) {
+        let moved = false;
+        for (const r of placedRects) {
+          const l = j.x - cw / 2, rr = j.x + cw / 2, tp = bottom - chh;
+          if (l < r.r + 3 && rr > r.l - 3 && tp < r.b + 4 && bottom > r.t - 4) { bottom = r.b + 4 + chh; moved = true; }
+        }
+        if (!moved) break;
+      }
+      if (bottom - chh < 5) bottom = chh + 5;
+      if (bottom > j.sh - 4) bottom = j.sh - 4;
+      placedRects.push({ l: j.x - cw / 2, r: j.x + cw / 2, t: bottom - chh, b: bottom });
+      j.e.chip.style.display = 'block';
+      j.e.chip.style.left = j.x + 'px';
+      j.e.chip.style.top = bottom + 'px';
+      j.e.chip.classList.toggle('sel', plumbobId === j.e.agent.id);
     }
     renderer.render(scene, camera);
   }
