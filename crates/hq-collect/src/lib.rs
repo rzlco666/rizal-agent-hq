@@ -848,17 +848,17 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
         .map(|q| format!("{} {}", q.provider, q.label))
         .collect();
     snap.fallback = FallbackInfo {
-        label: "OpenCode Go · GLM 5.3 Flash".into(),
-        model: "opencode-go/glm-5.3-flash".into(),
+        label: "OpenCode Go · DeepSeek V4.1 Flash".into(),
+        model: "opencode-go/deepseek-v4.1-flash".into(),
         active: !jebol.is_empty(),
         balance_usd: None,
         reserve_label: "DeepSeek langsung".into(),
         reserve_balance_usd: snap.deepseek_balance_est,
         note: if jebol.is_empty() {
-            "Siaga — jalur langganan utama masih tersedia. Bila tumbang: OpenCode Go dulu, DeepSeek langsung hanya cadangan terakhir.".into()
+            "Siaga — jalur langganan utama masih tersedia. Bila tumbang: OpenCode Go dulu (region Global aktif, flash + pro terbukti), DeepSeek langsung hanya cadangan terakhir.".into()
         } else {
             format!(
-                "AKTIF — kuota jebol: {}. Pekerjaan OMP dialihkan ke OpenCode Go (DeepSeek via Go masih terblokir region Global). Cadangan terakhir DeepSeek langsung — berhenti & lapor bila saldo < $1.",
+                "AKTIF — kuota jebol: {}. Pekerjaan OMP dialihkan ke OpenCode Go (deepseek-v4.1-flash; kelas berat deepseek-v4-pro; pendukung glm-5.3-flash). Cadangan terakhir DeepSeek langsung — berhenti & lapor bila saldo < $1.",
                 jebol.join(", ")
             )
         },
