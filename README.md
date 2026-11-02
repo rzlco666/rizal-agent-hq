@@ -21,7 +21,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshot.png" width="880" alt="The Rizal Agent HQ 3D office with real data: main agents at the front desks, robot workers behind them, Critical alerts and quota panels on the right">
+  <img src="docs/screenshot.png" width="880" alt="Rizal Agent HQ v2.5 running on real data: minimalist header, isometric 3D office with live agent chips, task & log dock below, and quota panels on the right">
 </p>
 <p align="center"><i>The 3D office running on real data — OMP, Cursor, and Muse in the front row; robot workers &amp; MCP behind them; Critical alerts and provider quotas in the right-hand panel.</i></p>
 
