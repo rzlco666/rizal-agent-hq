@@ -56,13 +56,21 @@ pub fn humanize(a: &RawActivity) -> String {
     let proj = a.project.as_deref();
     let proj_s = proj.unwrap_or("project berjalan");
 
-    let base = if low.contains("cargo test") || low.contains("npm test") || low.contains("bun test") || low.contains("pnpm test") {
+    let base = if low.contains("cargo test")
+        || low.contains("npm test")
+        || low.contains("bun test")
+        || low.contains("pnpm test")
+    {
         match a.success {
             Some(true) => format!("{agent} menjalankan tes {proj_s} dan semuanya lulus"),
             Some(false) => format!("{agent} menjalankan tes {proj_s} — ada yang gagal"),
             None => format!("{agent} sedang menjalankan tes {proj_s}"),
         }
-    } else if low.contains("cargo build") || low.contains("cargo clippy") || low.contains("npm run build") || low.contains("bun run build") {
+    } else if low.contains("cargo build")
+        || low.contains("cargo clippy")
+        || low.contains("npm run build")
+        || low.contains("bun run build")
+    {
         format!("{agent} sedang membangun {proj_s}")
     } else if low.contains("git commit") {
         format!("{agent} menyelesaikan satu tahap di {proj_s}: commit terbuat")
@@ -75,7 +83,7 @@ pub fn humanize(a: &RawActivity) -> String {
         let model = raw
             .split("--model")
             .nth(1)
-            .and_then(|r| r.trim().split_whitespace().next())
+            .and_then(|r| r.split_whitespace().next())
             .map(friendly_model)
             .unwrap_or_else(|| "model yang dipilih".into());
         format!("{agent} mulai tugas baru memakai {model}")
@@ -111,7 +119,11 @@ pub fn humanize_tool(agent: &str, tool: &str, intent: &str, target: &str, projec
         "glob" => format!("{agent} memetakan struktur berkas {project}"),
         "edit" => {
             let b = format!("{agent} mengubah berkas {base} di {project}");
-            if intent.is_empty() { b } else { format!("{b} — {}", intent.trim_end_matches('.')) }
+            if intent.is_empty() {
+                b
+            } else {
+                format!("{b} — {}", intent.trim_end_matches('.'))
+            }
         }
         "write" => format!("{agent} menulis berkas {base} di {project}"),
         "bash" => {
@@ -134,7 +146,10 @@ pub fn humanize_tool(agent: &str, tool: &str, intent: &str, target: &str, projec
         "web_fetch" | "fetch" => format!("{agent} membuka halaman web untuk {project}"),
         _ => {
             if !intent.is_empty() {
-                format!("{agent} sedang bekerja di {project}: {}", intent.chars().take(90).collect::<String>())
+                format!(
+                    "{agent} sedang bekerja di {project}: {}",
+                    intent.chars().take(90).collect::<String>()
+                )
             } else if !target.is_empty() {
                 format!("{agent} memakai perkakas {tool} pada {base} di {project}")
             } else {
@@ -149,7 +164,9 @@ pub fn task_title(activities: &[RawActivity], project: Option<&str>) -> String {
     if let Some(last) = activities.last() {
         let raw = last.raw.to_lowercase();
         let p = project.unwrap_or("project ini");
-        if raw.contains("mysql") && (raw.contains("fix") || raw.contains("decode") || raw.contains("bug")) {
+        if raw.contains("mysql")
+            && (raw.contains("fix") || raw.contains("decode") || raw.contains("bug"))
+        {
             return format!("Memperbaiki bug MySQL di {p}");
         }
         if raw.contains("test") {
@@ -181,7 +198,11 @@ mod tests {
 
     #[test]
     fn contoh_prd_omp_model() {
-        let s = humanize(&ra("bun /home/rizal/.bun/bin/omp --model openai-codex/gpt-6.1-sol", None, None));
+        let s = humanize(&ra(
+            "bun /home/rizal/.bun/bin/omp --model openai-codex/gpt-6.1-sol",
+            None,
+            None,
+        ));
         assert_eq!(s, "OMP mulai tugas baru memakai GPT (Codex)");
     }
 
@@ -196,7 +217,12 @@ mod tests {
 
     #[test]
     fn contoh_ci_dan_cursor() {
-        assert!(humanize(&ra("gh run watch 41405856207", Some("strut-stack-sql"), None)).contains("menunggu hasil CI"));
+        assert!(humanize(&ra(
+            "gh run watch 41405856207",
+            Some("strut-stack-sql"),
+            None
+        ))
+        .contains("menunggu hasil CI"));
         let mut c = ra("cursor-agent worker start", Some("sample-next"), None);
         c.agent_name = "Cursor".into();
         assert!(humanize(&c).contains("sedang mengerjakan sample-next"));
@@ -204,7 +230,11 @@ mod tests {
 
     #[test]
     fn tidak_mengarang_dan_tetap_disensor() {
-        let s = humanize(&ra("some-tool --api-key crsr_1234567890abcdef --weird", Some("svelte-rust"), None));
+        let s = humanize(&ra(
+            "some-tool --api-key crsr_1234567890abcdef --weird",
+            Some("svelte-rust"),
+            None,
+        ));
         assert_eq!(s, "OMP sedang menjalankan perintah di svelte-rust");
     }
 }

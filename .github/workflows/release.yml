@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Build release binary
+        run: cargo build --workspace --release
+
+      - name: Package tarball
+        run: |
+          mkdir -p dist/rizal-agent-hq
+          cp target/release/rizal-agent-hq dist/rizal-agent-hq/
+          cp -r web scripts systemd dist/rizal-agent-hq/
+          cp README.md LICENSE CHANGELOG.md dist/rizal-agent-hq/
+          tar -czf "rizal-agent-hq-${GITHUB_REF_NAME}-linux-x86_64.tar.gz" -C dist rizal-agent-hq
+          ls -la *.tar.gz
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rizal-agent-hq-*.tar.gz
+          generate_release_notes: true

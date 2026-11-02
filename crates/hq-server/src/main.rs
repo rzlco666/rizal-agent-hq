@@ -79,8 +79,16 @@ fn run_omp_prompt(model: &str, prompt: &str) -> Option<String> {
             Ok(Some(_)) => {
                 let out = child.wait_with_output().ok()?;
                 let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let clean: String = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty() && !l.starts_with("Working")).collect::<Vec<_>>().join(" ");
-                let clean = clean.trim_matches(|c| c == '"' || c == '`').trim().to_string();
+                let clean: String = text
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty() && !l.starts_with("Working"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let clean = clean
+                    .trim_matches(|c| c == '"' || c == '`')
+                    .trim()
+                    .to_string();
                 if clean.chars().count() < 10 || clean.to_lowercase().starts_with("error") {
                     return None;
                 }
@@ -114,17 +122,30 @@ fn llm_worker(
     let mut attempts: HashMap<(String, u64), std::time::Instant> = HashMap::new();
     while let Ok(job) = rx.recv() {
         if let Ok(p) = pending.lock() {
-            if !p.contains(&job.task_id) { continue; }
+            if !p.contains(&job.task_id) {
+                continue;
+            }
         }
         let done = |pending: &Arc<std::sync::Mutex<HashSet<String>>>| {
-            if let Ok(mut p) = pending.lock() { p.remove(&job.task_id); }
+            if let Ok(mut p) = pending.lock() {
+                p.remove(&job.task_id);
+            }
         };
         // Cooldown 20 menit per (task, hash) agar kegagalan tidak mengantre terus.
         if let Some(t) = attempts.get(&(job.task_id.clone(), job.hash)) {
-            if t.elapsed().as_secs() < 1200 { done(&pending); continue; }
+            if t.elapsed().as_secs() < 1200 {
+                done(&pending);
+                continue;
+            }
         }
         if let Ok(c) = cache.lock() {
-            if c.get(&job.task_id).map(|(h, _)| *h == job.hash).unwrap_or(false) { done(&pending); continue; }
+            if c.get(&job.task_id)
+                .map(|(h, _)| *h == job.hash)
+                .unwrap_or(false)
+            {
+                done(&pending);
+                continue;
+            }
         }
         attempts.insert((job.task_id.clone(), job.hash), std::time::Instant::now());
         let title: String = job.title.chars().take(1200).collect();
@@ -137,7 +158,10 @@ Detail: {detail}"
         );
         let mut result = None;
         for m in &models {
-            if let Some(r) = run_omp_prompt(m, &prompt) { result = Some(r); break; }
+            if let Some(r) = run_omp_prompt(m, &prompt) {
+                result = Some(r);
+                break;
+            }
         }
         if let Some(text) = result {
             if let Some(db) = &db {
@@ -169,7 +193,10 @@ fn persist_alert(db: &rusqlite::Connection, a: &Alert) {
             );
         }
         _ => {
-            let _ = db.execute("DELETE FROM alert_state WHERE id = ?1", rusqlite::params![a.id]);
+            let _ = db.execute(
+                "DELETE FROM alert_state WHERE id = ?1",
+                rusqlite::params![a.id],
+            );
         }
     }
 }
@@ -250,9 +277,18 @@ async fn refresh(st: &AppState) {
             match cached {
                 Some((ch, text)) if ch == h => t.summary = Some(text),
                 _ => {
-                    let fresh = st.llm_pending.lock().map(|mut p| p.insert(t.id.clone())).unwrap_or(false);
+                    let fresh = st
+                        .llm_pending
+                        .lock()
+                        .map(|mut p| p.insert(t.id.clone()))
+                        .unwrap_or(false);
                     if fresh {
-                        let _ = tx.send(LlmJob { task_id: t.id.clone(), hash: h, title: t.title.clone(), detail: t.detail.clone() });
+                        let _ = tx.send(LlmJob {
+                            task_id: t.id.clone(),
+                            hash: h,
+                            title: t.title.clone(),
+                            detail: t.detail.clone(),
+                        });
                     }
                 }
             }
@@ -273,13 +309,21 @@ async fn refresh(st: &AppState) {
             saved.clear();
             for a in &snap.alerts {
                 match a.state {
-                    AlertState::Ditangani => { saved.insert(a.id.clone(), ("ditangani".into(), None)); }
-                    AlertState::Ditunda => { saved.insert(a.id.clone(), ("ditunda".into(), a.snoozed_until)); }
+                    AlertState::Ditangani => {
+                        saved.insert(a.id.clone(), ("ditangani".into(), None));
+                    }
+                    AlertState::Ditunda => {
+                        saved.insert(a.id.clone(), ("ditunda".into(), a.snoozed_until));
+                    }
                     _ => {}
                 }
             }
         }
-        let active = snap.agents.iter().filter(|a| a.status == Status::Bekerja).count() as i64;
+        let active = snap
+            .agents
+            .iter()
+            .filter(|a| a.status == Status::Bekerja)
+            .count() as i64;
         let _ = db.execute(
             "INSERT OR REPLACE INTO snapshots(at,requests,input,output,cache,cash,shadow,active_agents) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
             rusqlite::params![
@@ -307,7 +351,13 @@ struct Heartbeat {
 async fn post_heartbeat(State(st): State<Arc<AppState>>, Json(hb): Json<Heartbeat>) -> StatusCode {
     let dir = format!("{}/heartbeats", st.data_dir);
     let _ = std::fs::create_dir_all(&dir);
-    let name: String = hb.agent.to_lowercase().replace(' ', "-").chars().filter(|c| c.is_alphanumeric() || *c == '-').collect();
+    let name: String = hb
+        .agent
+        .to_lowercase()
+        .replace(' ', "-")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')
+        .collect();
     if name.is_empty() {
         return StatusCode::BAD_REQUEST;
     }
@@ -349,8 +399,12 @@ async fn apply_alert_change(st: &AppState) {
         saved.clear();
         for a in &alerts {
             match a.state {
-                AlertState::Ditangani => { saved.insert(a.id.clone(), ("ditangani".into(), None)); }
-                AlertState::Ditunda => { saved.insert(a.id.clone(), ("ditunda".into(), a.snoozed_until)); }
+                AlertState::Ditangani => {
+                    saved.insert(a.id.clone(), ("ditangani".into(), None));
+                }
+                AlertState::Ditunda => {
+                    saved.insert(a.id.clone(), ("ditunda".into(), a.snoozed_until));
+                }
                 _ => {}
             }
         }
@@ -369,13 +423,18 @@ async fn alert_ack(State(st): State<Arc<AppState>>, Path(id): Path<String>) -> S
     StatusCode::OK
 }
 
-async fn alert_snooze(State(st): State<Arc<AppState>>, Path(id): Path<String>, Json(act): Json<AlertAction>) -> StatusCode {
+async fn alert_snooze(
+    State(st): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(act): Json<AlertAction>,
+) -> StatusCode {
     {
         let mut alerts = st.alerts.write().await;
         match alerts.iter_mut().find(|a| a.id == id) {
             Some(a) => {
                 a.state = AlertState::Ditunda;
-                a.snoozed_until = Some(now_ms() + act.minutes.unwrap_or(60).clamp(5, 10080) * 60 * 1000);
+                a.snoozed_until =
+                    Some(now_ms() + act.minutes.unwrap_or(60).clamp(5, 10080) * 60 * 1000);
             }
             None => return StatusCode::NOT_FOUND,
         }
@@ -389,7 +448,10 @@ struct HistoryQ {
     days: Option<i64>,
 }
 
-async fn get_history(State(st): State<Arc<AppState>>, Query(q): Query<HistoryQ>) -> Json<serde_json::Value> {
+async fn get_history(
+    State(st): State<Arc<AppState>>,
+    Query(q): Query<HistoryQ>,
+) -> Json<serde_json::Value> {
     let days = q.days.unwrap_or(7);
     let since = now_ms() - days * 86400 * 1000;
     let mut rows = vec![];
@@ -460,7 +522,11 @@ async fn main() {
     {
         if let Ok(mut stmt) = db.prepare("SELECT task_id, hash, summary FROM llm_summaries") {
             if let Ok(rows) = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             }) {
                 for row in rows.flatten() {
                     if let Ok(mut c) = llm_cache.lock() {
@@ -471,7 +537,11 @@ async fn main() {
         }
         if let Ok(mut stmt) = db.prepare("SELECT id, state, snoozed_until FROM alert_state") {
             if let Ok(rows) = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                ))
             }) {
                 for row in rows.flatten() {
                     alert_saved_map.insert(row.0, (row.1, row.2));
@@ -483,19 +553,24 @@ async fn main() {
     let llm_tx = if env_or("HQ_LLM", "on") == "off" {
         None
     } else {
-        let models: Vec<String> = env_or("HQ_LLM_MODELS", "opencode-go/beam-free,opencode-go/glm-5.3-flash")
-            .split(',')
-            .map(|m| m.trim().to_string())
-            .filter(|m| !m.is_empty())
-            .collect();
+        let models: Vec<String> = env_or(
+            "HQ_LLM_MODELS",
+            "opencode-go/beam-free,opencode-go/glm-5.3-flash",
+        )
+        .split(',')
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .collect();
         let (txl, rxl) = std::sync::mpsc::channel::<LlmJob>();
         let (cache2, pending2, path2) = (llm_cache.clone(), llm_pending.clone(), db_path.clone());
         std::thread::spawn(move || llm_worker(rxl, path2, models, cache2, pending2));
         Some(txl)
     };
     let (tx, _rx0) = tokio::sync::broadcast::channel::<String>(16);
-    let mut collect_state = hq_collect::CollectState::default();
-    collect_state.heartbeat_dir = format!("{data_dir}/heartbeats");
+    let collect_state = hq_collect::CollectState {
+        heartbeat_dir: format!("{data_dir}/heartbeats"),
+        ..Default::default()
+    };
     let st = Arc::new(AppState {
         snap: RwLock::new(Snapshot::default()),
         alerts: RwLock::new(vec![]),
@@ -522,11 +597,31 @@ async fn main() {
     }
 
     let app = Router::new()
-        .route("/api/state", get(|State(st): State<Arc<AppState>>| async move { Json(st.snap.read().await.clone()) }))
-        .route("/api/agents", get(|State(st): State<Arc<AppState>>| async move { Json(serde_json::json!({ "agents": st.snap.read().await.agents })) }))
-        .route("/api/alerts", get(|State(st): State<Arc<AppState>>| async move { Json(serde_json::json!({ "alerts": st.alerts.read().await.clone() })) }))
+        .route(
+            "/api/state",
+            get(
+                |State(st): State<Arc<AppState>>| async move { Json(st.snap.read().await.clone()) },
+            ),
+        )
+        .route(
+            "/api/agents",
+            get(|State(st): State<Arc<AppState>>| async move {
+                Json(serde_json::json!({ "agents": st.snap.read().await.agents }))
+            }),
+        )
+        .route(
+            "/api/alerts",
+            get(|State(st): State<Arc<AppState>>| async move {
+                Json(serde_json::json!({ "alerts": st.alerts.read().await.clone() }))
+            }),
+        )
         .route("/api/history", get(get_history))
-        .route("/api/health", get(|| async { Json(serde_json::json!({ "ok": true, "at": now_ms(), "app": "rizal-agent-hq" })) }))
+        .route(
+            "/api/health",
+            get(|| async {
+                Json(serde_json::json!({ "ok": true, "at": now_ms(), "app": "rizal-agent-hq" }))
+            }),
+        )
         .route("/ws", get(ws_handler))
         .route("/api/heartbeat", post(post_heartbeat))
         .route("/api/alerts/{id}/ack", post(alert_ack))
@@ -534,7 +629,9 @@ async fn main() {
         .fallback_service(ServeDir::new(web_dir.clone()))
         .with_state(st);
 
-    let listener = tokio::net::TcpListener::bind(format!("{bind}:{port}")).await.expect("bind");
+    let listener = tokio::net::TcpListener::bind(format!("{bind}:{port}"))
+        .await
+        .expect("bind");
     println!("Rizal Agent HQ jalan di http://{bind}:{port}/ (interval {interval}s)");
     axum::serve(listener, app).await.expect("serve");
 }

@@ -50,7 +50,11 @@ pub fn iso_to_ms(s: &str) -> Option<i64> {
     let num = |a: usize, z: usize| -> Option<i64> { s.get(a..z)?.parse().ok() };
     let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
     let (h, mi, sec) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
-    let ms: i64 = if b.get(19) == Some(&b'.') { num(20, 23).unwrap_or(0) } else { 0 };
+    let ms: i64 = if b.get(19) == Some(&b'.') {
+        num(20, 23).unwrap_or(0)
+    } else {
+        0
+    };
     // days_from_civil (Howard Hinnant)
     let yy = if mo <= 2 { y - 1 } else { y };
     let era = yy.div_euclid(400);
@@ -83,7 +87,12 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
         s.id = uuid.to_string();
     }
     // Berkas sesi subagent dinamai menurut tugasnya (bukan tanggal_UUID).
-    if !fname.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    if !fname
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
         s.name = fname.clone();
     }
     for line in text.lines() {
@@ -93,9 +102,21 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
         };
         match v.get("type").and_then(|t| t.as_str()) {
             Some("session") => {
-                s.id = v.get("id").and_then(|x| x.as_str()).unwrap_or(&s.id).to_string();
-                s.cwd = v.get("cwd").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                s.started_ms = v.get("timestamp").and_then(|x| x.as_str()).and_then(iso_to_ms).unwrap_or(0);
+                s.id = v
+                    .get("id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or(&s.id)
+                    .to_string();
+                s.cwd = v
+                    .get("cwd")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                s.started_ms = v
+                    .get("timestamp")
+                    .and_then(|x| x.as_str())
+                    .and_then(iso_to_ms)
+                    .unwrap_or(0);
                 if v.get("parentSession").is_some() {
                     s.is_subagent = true;
                 }
@@ -106,7 +127,11 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
                 }
             }
             Some("message") => {
-                if let Some(ts) = v.get("timestamp").and_then(|x| x.as_str()).and_then(iso_to_ms) {
+                if let Some(ts) = v
+                    .get("timestamp")
+                    .and_then(|x| x.as_str())
+                    .and_then(iso_to_ms)
+                {
                     s.last_ms = s.last_ms.max(ts);
                 }
                 let m = v.get("message")?;
@@ -128,9 +153,17 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
                     if let Some(parts) = content {
                         for p in parts {
                             if p.get("type").and_then(|x| x.as_str()) == Some("toolCall") {
-                                let name = p.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                let name = p
+                                    .get("name")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
                                 let args = p.get("arguments").cloned().unwrap_or(Value::Null);
-                                let intent = args.get("i").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                let intent = args
+                                    .get("i")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
                                 let mut target = args
                                     .get("path")
                                     .or_else(|| args.get("file"))
@@ -149,7 +182,11 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
                                     }
                                 }
                                 *s.tool_counts.entry(name.clone()).or_default() += 1;
-                                s.last_tools.push(ToolUse { name, intent, target: redact(&target).chars().take(110).collect() });
+                                s.last_tools.push(ToolUse {
+                                    name,
+                                    intent,
+                                    target: redact(&target).chars().take(110).collect(),
+                                });
                             }
                         }
                     }
@@ -176,7 +213,7 @@ pub fn parse_session_file(path: &std::path::Path) -> Option<SessionInfo> {
 }
 
 /// Baca stats.db (read-only): lengkapi usage & tipe agent per sesi.
-fn enrich_from_stats_db(sessions: &mut Vec<SessionInfo>) {
+fn enrich_from_stats_db(sessions: &mut [SessionInfo]) {
     let db_path = format!("{}/.omp/stats.db", crate::home());
     let conn = match rusqlite::Connection::open_with_flags(
         &db_path,
@@ -199,7 +236,7 @@ fn enrich_from_stats_db(sessions: &mut Vec<SessionInfo>) {
                 ))
             },
         );
-        if let Ok((req, _tokens, cost, ended_at)) = row {
+        if let Ok((req, _tokens, _cost, ended_at)) = row {
             s.usage.requests = req.max(0) as u64;
             s.ended = ended_at.map(|e| e > 0).unwrap_or(false);
         }
@@ -212,7 +249,12 @@ fn enrich_from_stats_db(sessions: &mut Vec<SessionInfo>) {
         };
         let rows: Vec<(String, i64, i64, i64)> = stmt
             .query_map(rusqlite::params![s.file], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
             })
             .map(|it| it.flatten().collect())
             .unwrap_or_default();
@@ -303,11 +345,14 @@ pub fn collect_sessions(now_ms: i64, max_age_ms: i64, limit_files: usize) -> Vec
             }
         }
     }
-    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
     files.truncate(limit_files);
-    let mut out: Vec<SessionInfo> = files.iter().filter_map(|(_, p)| parse_session_file(p)).collect();
+    let mut out: Vec<SessionInfo> = files
+        .iter()
+        .filter_map(|(_, p)| parse_session_file(p))
+        .collect();
     enrich_from_stats_db(&mut out);
-    out.sort_by(|a, b| b.last_ms.cmp(&a.last_ms));
+    out.sort_by_key(|s| std::cmp::Reverse(s.last_ms));
     out
 }
 

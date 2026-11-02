@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in HQ is broken or looks wrong
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! The more precise the report, the faster the fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Steps, clicks, or the URL/query you used (e.g. `?view=board`).
+      placeholder: |
+        1. Open HQ
+        2. Click …
+        3. See …
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: HQ version
+      description: Shown as a chip next to the logo in the header, or your release tag.
+      placeholder: v2.5.0
+    validations:
+      required: false
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, browser, which agents/sources are enabled (OMP, Cursor, Muse, MCP…).
+    validations:
+      required: false

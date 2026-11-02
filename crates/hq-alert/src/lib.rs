@@ -7,7 +7,16 @@ use hq_core::*;
 
 fn mk(agent: &str, level: AlertLevel, title: String, needs: String, since: i64) -> Alert {
     Alert {
-        id: format!("{}-{}", agent, title.chars().filter(|c| c.is_alphanumeric()).take(24).collect::<String>().to_lowercase()),
+        id: format!(
+            "{}-{}",
+            agent,
+            title
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .take(24)
+                .collect::<String>()
+                .to_lowercase()
+        ),
         agent_id: agent.into(),
         level,
         title,
@@ -65,7 +74,8 @@ pub fn evaluate(snap: &Snapshot, prev_agents: &[Agent]) -> Vec<Alert> {
                 "omp",
                 AlertLevel::Kritis,
                 format!("Saldo DeepSeek menipis (estimasi ${bal:.2})"),
-                "Top-up saldo API DeepSeek bila pekerjaan berbayar tunai masih akan berjalan.".into(),
+                "Top-up saldo API DeepSeek bila pekerjaan berbayar tunai masih akan berjalan."
+                    .into(),
                 now,
             ));
         }
@@ -84,7 +94,10 @@ pub fn evaluate(snap: &Snapshot, prev_agents: &[Agent]) -> Vec<Alert> {
                     &prev.id,
                     AlertLevel::PerluAction,
                     format!("{} berhenti mendadak", prev.name),
-                    format!("Cek {} di mesin: prosesnya hilang saat sebelumnya sedang bekerja.", prev.name),
+                    format!(
+                        "Cek {} di mesin: prosesnya hilang saat sebelumnya sedang bekerja.",
+                        prev.name
+                    ),
                     now,
                 ));
             }
@@ -128,7 +141,8 @@ pub fn evaluate(snap: &Snapshot, prev_agents: &[Agent]) -> Vec<Alert> {
             "Muse",
             AlertLevel::PerluAction,
             "Muse terputus dari Tailscale".into(),
-            "Periksa koneksi Tailscale di VM Muse / laptop agar Muse bisa kembali bekerja di WSL.".into(),
+            "Periksa koneksi Tailscale di VM Muse / laptop agar Muse bisa kembali bekerja di WSL."
+                .into(),
             now,
         ));
     }
@@ -174,8 +188,15 @@ mod tests {
 
     #[test]
     fn kuota_penuh_jadi_kritis() {
-        let mut snap = Snapshot::default();
-        snap.quotas = vec![Quota { provider: "cursor".into(), label: "Cursor Models".into(), percent: Some(100.0), extra: String::new() }];
+        let snap = Snapshot {
+            quotas: vec![Quota {
+                provider: "cursor".into(),
+                label: "Cursor Models".into(),
+                percent: Some(100.0),
+                extra: String::new(),
+            }],
+            ..Default::default()
+        };
         let alerts = evaluate(&snap, &[]);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].level, AlertLevel::Kritis);
@@ -184,8 +205,10 @@ mod tests {
 
     #[test]
     fn saldo_menipis_jadi_kritis() {
-        let mut snap = Snapshot::default();
-        snap.deepseek_balance_est = Some(0.5);
+        let snap = Snapshot {
+            deepseek_balance_est: Some(0.5),
+            ..Default::default()
+        };
         let alerts = evaluate(&snap, &[]);
         assert!(alerts.iter().any(|a| a.level == AlertLevel::Kritis));
     }

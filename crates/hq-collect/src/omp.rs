@@ -7,9 +7,15 @@ use serde_json::Value;
 use std::collections::HashSet;
 
 pub fn cash_providers() -> HashSet<&'static str> {
-    ["deepseek", "kilo", "openrouter", "cloudflare-ai-gateway", "opencode-zen"]
-        .into_iter()
-        .collect()
+    [
+        "deepseek",
+        "kilo",
+        "openrouter",
+        "cloudflare-ai-gateway",
+        "opencode-zen",
+    ]
+    .into_iter()
+    .collect()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,14 +75,25 @@ pub fn parse_stats(json_text: &str) -> Option<OmpStats> {
         ok: true,
         total_cost_raw: f(overall_v, "totalCost"),
         error_rate: f(overall_v, "errorRate"),
-        last_ts: overall_v.get("lastTimestamp").and_then(|x| x.as_i64()).unwrap_or(0),
+        last_ts: overall_v
+            .get("lastTimestamp")
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0),
         ..Default::default()
     };
     let mut ov = usage_of(overall_v);
     if let Some(models) = j.get("byModel").and_then(|x| x.as_array()) {
         for m in models {
-            let provider = m.get("provider").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let model = m.get("model").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let provider = m
+                .get("provider")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let model = m
+                .get("model")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             let cost = f(m, "totalCost");
             let (cash, shadow) = split_one(&provider, &model, cost);
             let mut mu = usage_of(m);
@@ -84,10 +101,19 @@ pub fn parse_stats(json_text: &str) -> Option<OmpStats> {
             mu.shadow_usd = shadow;
             ov.cash_usd += cash;
             ov.shadow_usd += shadow;
-            out.by_model.push(ModelUsage { provider, model, usage: mu });
+            out.by_model.push(ModelUsage {
+                provider,
+                model,
+                usage: mu,
+            });
         }
     }
-    out.by_model.sort_by(|a, b| b.usage.total_cost().partial_cmp(&a.usage.total_cost()).unwrap());
+    out.by_model.sort_by(|a, b| {
+        b.usage
+            .total_cost()
+            .partial_cmp(&a.usage.total_cost())
+            .unwrap()
+    });
     out.overall = ov;
     if let Some(types) = j.get("byAgentType").and_then(|x| x.as_array()) {
         for t in types {
@@ -131,7 +157,8 @@ pub fn parse_usage(text: &str) -> Vec<Quota> {
     let mut cur = String::from("umum");
     let head_re = regex::Regex::new(r"^([A-Z][A-Za-z ]+?)\s+—\s+\d+\s+account").unwrap();
     let used_re = regex::Regex::new(r"(?i)^(.*?)\s+([\d.,]+)%\s+used\s*(?:·|•)\s*(.*)$").unwrap();
-    let req_re = regex::Regex::new(r"(?i)^(.*?)\s+([\d.,]+)\s*/\s*([\d.,]+[KM]?)\s+requests").unwrap();
+    let req_re =
+        regex::Regex::new(r"(?i)^(.*?)\s+([\d.,]+)\s*/\s*([\d.,]+[KM]?)\s+requests").unwrap();
     let bars = regex::Regex::new(r"[\u{2500}-\u{257F}\u{2580}-\u{259F}]").unwrap();
     for raw in text.lines() {
         let line0 = raw.replace('\u{1b}', "");
@@ -142,7 +169,10 @@ pub fn parse_usage(text: &str) -> Vec<Quota> {
         let cleaned = bars.replace_all(line0.trim(), "");
         let line = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
         let line = line.trim_start_matches('•').trim().to_string();
-        if line.is_empty() || line.to_lowercase().starts_with("usage") || line.to_lowercase().starts_with("capacity:") {
+        if line.is_empty()
+            || line.to_lowercase().starts_with("usage")
+            || line.to_lowercase().starts_with("capacity:")
+        {
             continue;
         }
         if let Some(c) = used_re.captures(&line) {
@@ -190,7 +220,10 @@ mod tests {
     fn split_tunai_vs_bayangan() {
         assert_eq!(split_one("deepseek", "deepseek-v4-flash", 1.5), (1.5, 0.0));
         assert_eq!(split_one("openai-codex", "gpt-6.1-sol", 7.0), (0.0, 7.0));
-        assert_eq!(split_one("opencode-zen", "deepseek-v4.1-flash-free", 0.0), (0.0, 0.0));
+        assert_eq!(
+            split_one("opencode-zen", "deepseek-v4.1-flash-free", 0.0),
+            (0.0, 0.0)
+        );
         // OpenCode Go = langganan flat $10/bln: meteran stats-nya BAYANGAN, bukan tunai.
         assert_eq!(split_one("opencode-go", "glm-5.3-flash", 1.0), (0.0, 1.0));
     }

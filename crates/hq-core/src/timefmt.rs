@@ -5,7 +5,11 @@ pub fn wib_parts(epoch_ms: i64) -> (i64, u32, u32, u32, u32, u32) {
     let secs = epoch_ms.div_euclid(1000) + 7 * 3600;
     let days = secs.div_euclid(86400);
     let tod = secs.rem_euclid(86400);
-    let (h, m, s) = ((tod / 3600) as u32, ((tod % 3600) / 60) as u32, (tod % 60) as u32);
+    let (h, m, s) = (
+        (tod / 3600) as u32,
+        ((tod % 3600) / 60) as u32,
+        (tod % 60) as u32,
+    );
     // Algoritma civil-from-days (Howard Hinnant).
     let z = days + 719468;
     let era = z.div_euclid(146097);

@@ -18,6 +18,13 @@
   <img alt="Single binary" src="https://img.shields.io/badge/Deploy-1%20binary%20~5MB-ffb454">
 </p>
 
+<p align="center">
+  <a href="https://github.com/rzlco666/rizal-agent-hq/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rzlco666/rizal-agent-hq/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/rzlco666/rizal-agent-hq/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/rzlco666/rizal-agent-hq"></a>
+  <a href="https://github.com/rzlco666/rizal-agent-hq/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/rzlco666/rizal-agent-hq?style=social"></a>
+</p>
+<p align="center"><i>If HQ helps you see your agents, a ⭐ helps other agent-wranglers find it.</i></p>
+
 ---
 
 <p align="center">
