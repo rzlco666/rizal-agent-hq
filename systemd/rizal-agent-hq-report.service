@@ -1,0 +1,9 @@
+[Unit]
+Description=Laporan harian Rizal Agent HQ (Markdown 23:55 WIB)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/rizal-agent-hq
+ExecStart=/usr/bin/env bash %h/rizal-agent-hq/scripts/daily-report.sh
+Environment=HQ_PORT=8900
+Environment=HQ_DEST=%h/rizal-agent-hq

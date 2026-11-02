@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rizal Agent HQ logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16213d"/>
+      <stop offset="1" stop-color="#0b1020"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3ddc97"/>
+      <stop offset="1" stop-color="#7c9eff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="none" stroke="url(#acc)" stroke-width="4"/>
+  <!-- atap markas -->
+  <path d="M48 92 L128 44 L208 92" fill="none" stroke="url(#acc)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- tiang -->
+  <path d="M64 96 V196 M192 96 V196" stroke="#31456f" stroke-width="8" stroke-linecap="round"/>
+  <!-- lantai -->
+  <path d="M48 204 H208" stroke="url(#acc)" stroke-width="10" stroke-linecap="round"/>
+  <!-- agent utama (manusia) -->
+  <circle cx="128" cy="118" r="17" fill="#3ddc97"/>
+  <path d="M103 196 v-26 a25 25 0 0 1 50 0 v26 z" fill="#3ddc97"/>
+  <!-- worker robot kiri -->
+  <rect x="66" y="146" width="30" height="26" rx="8" fill="#7c9eff"/>
+  <circle cx="75" cy="159" r="3.4" fill="#0b1020"/>
+  <circle cx="87" cy="159" r="3.4" fill="#0b1020"/>
+  <path d="M81 146 v-10 M74 136 h14" stroke="#7c9eff" stroke-width="5" stroke-linecap="round"/>
+  <!-- worker robot kanan -->
+  <rect x="160" y="146" width="30" height="26" rx="8" fill="#ffb454"/>
+  <circle cx="169" cy="159" r="3.4" fill="#0b1020"/>
+  <circle cx="181" cy="159" r="3.4" fill="#0b1020"/>
+  <path d="M175 146 v-10 M168 136 h14" stroke="#ffb454" stroke-width="5" stroke-linecap="round"/>
+  <!-- sinyal status -->
+  <circle cx="128" cy="74" r="6" fill="#ff6b7a"/>
+</svg>

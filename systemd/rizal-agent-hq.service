@@ -1,0 +1,19 @@
+[Unit]
+Description=Rizal Agent HQ — markas 3D pantau semua agent Rizal (Rust)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/rizal-agent-hq
+ExecStart=%h/rizal-agent-hq/bin/rizal-agent-hq
+Restart=always
+RestartSec=5
+Environment=HQ_PORT=8900
+Environment=HQ_BIND=127.0.0.1
+Environment=HQ_INTERVAL=30
+Environment=HQ_DATA=%h/rizal-agent-hq/data
+Environment=HQ_WEB=%h/rizal-agent-hq/web
+
+[Install]
+WantedBy=default.target
