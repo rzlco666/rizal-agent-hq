@@ -180,7 +180,7 @@ const ZONES = {
 export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingChange } = {}) {
   const labelsEl = document.getElementById('labels');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -194,7 +194,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   const sun = new THREE.DirectionalLight(0xffffff, 2.15);
   sun.position.set(20, 32, 14);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 30, bottom: -30, far: 90 });
   sun.shadow.bias = -0.0004;
   scene.add(sun);
@@ -211,6 +211,19 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   controls.maxPolarAngle = Math.PI / 2.15;
   controls.minZoom = 0.45; controls.maxZoom = 3.2;
   controls.target.set(0, 0, 0);
+  controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  // Pulihkan posisi kamera terakhir (tersimpan lokal) — kamera TIDAK kembali ke default.
+  try {
+    const saved = JSON.parse(localStorage.getItem('hq-cam-v2') || 'null');
+    if (saved && Array.isArray(saved.t) && Array.isArray(saved.d)) {
+      controls.target.set(saved.t[0], saved.t[1], saved.t[2]);
+      camDir.set(saved.d[0], saved.d[1], saved.d[2]).normalize();
+      camera.zoom = saved.z || 0.8;
+      camera.position.copy(controls.target).add(camDir.clone().multiplyScalar(70));
+      camera.updateProjectionMatrix();
+    }
+  } catch { /* abaikan */ }
 
   // ===== lingkungan luar =====
   const world = new THREE.Group(); scene.add(world);
@@ -411,9 +424,13 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
         : '';
       const actShort = actTxt.length > 46 ? actTxt.slice(0, 46) + '…' : actTxt;
       const actHtml = actShort ? `<small class="act">${actShort.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</small>` : '';
-      e.chip.innerHTML = `<span class="nm"><i style="background:${dot}"></i>${a.emoji || ''} ${short}</span><small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
+      const chipSig = short + '|' + a.status + '|' + actShort;
+      if (e._sig !== chipSig) {
+        e._sig = chipSig;
+        e.chip.innerHTML = `<span class="nm"><i style="background:${dot}"></i>${short}</span><small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
+        e._w = e.chip.offsetWidth || 120; e._h = e.chip.offsetHeight || 44;
+      }
       e.chip.style.opacity = a.status === 'offline' ? 0.55 : 1;
-      e._w = e.chip.offsetWidth || 120; e._h = e.chip.offsetHeight || 44;
     }
     for (const [id, e] of entries) {
       if (!seen.has(id)) {
@@ -425,21 +442,32 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   }
 
   // ===== kamera =====
-  let desired = { x: 0, z: 0, zoom: 0.8 };
+  // Kamera hanya bergerak menuju TUJUAN (preset/fokus/reset). Interaksi user
+  // (seret/scroll/putar) membatalkan tujuan — posisi terakhir user selalu menang & tersimpan.
+  let camGoal = null;
+  function goTo(x, z, zoom, dir) { camGoal = { x, z, zoom, dir: dir ? dir.clone() : null }; }
+  function saveCam() {
+    try { localStorage.setItem('hq-cam-v2', JSON.stringify({ t: controls.target.toArray(), z: camera.zoom, d: camDir.toArray() })); } catch { /* abaikan */ }
+  }
+  controls.addEventListener('start', () => { camGoal = null; });
+  controls.addEventListener('end', saveCam);
+  let saveTimer = null;
+  controls.addEventListener('change', () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveCam, 900); });
   function focusAgent(id) {
     const e = entries.get(id);
-    if (e) desired = { x: e.group.position.x, z: e.group.position.z, zoom: 1.75 };
+    if (e) goTo(e.group.position.x, e.group.position.z, 1.75);
   }
+  function resetCamera() { goTo(0, 0, 0.8, ISO_DIR); }
   function preset(name, agents) {
-    if (name === 'iso') { camDir = ISO_DIR.clone(); desired = { x: 0, z: 0, zoom: 0.8 }; return; }
-    if (name === 'atas') { camDir = new THREE.Vector3(0.001, 1, 0.35).normalize(); desired = { x: 0, z: 0, zoom: 0.8 }; return; }
+    if (name === 'iso') { goTo(0, 0, 0.8, ISO_DIR); return; }
+    if (name === 'atas') { goTo(0, 0, 0.85, new THREE.Vector3(0.001, 1, 0.35).normalize()); return; }
     if (name === 'alert') {
       const bad = (agents || []).find(a => a.status === 'menunggu-rizal' || a.status === 'error');
       if (bad) { focusAgent(bad.id); return; }
-      desired = { x: 0, z: 0, zoom: 0.8 }; return;
+      goTo(0, 0, 0.8); return;
     }
     const z = ZONES[name] || ZONES.semua;
-    desired = { x: z.t[0], z: z.t[1], zoom: z.zoom };
+    goTo(z.t[0], z.t[1], z.zoom);
   }
 
   function callMeeting() {
@@ -542,16 +570,13 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   }
   function animate() {
     requestAnimationFrame(animate);
+    if (document.hidden) { lastT = clockT.getElapsedTime(); return; }
     const tRaw = clockT.getElapsedTime();
     const rawDt = Math.min(tRaw - lastT, 0.1); lastT = tRaw; frames++; lastDt = rawDt;
     const dt = simPaused ? 0 : rawDt * speedMul;
     simT += dt;
     const t = simT;
     if (orbitOn && !simPaused) camDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), dt * 0.07);
-    if (followId && entries.has(followId)) {
-      const fe = entries.get(followId);
-      desired.x = fe.group.position.x; desired.z = fe.group.position.z;
-    }
     if (plumbobId && entries.has(plumbobId)) {
       const pe = entries.get(plumbobId);
       plumbob.visible = true;
@@ -559,13 +584,18 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
       plumbob.rotation.y = t * 2.6;
     } else plumbob.visible = false;
     if (meeting.active && t > meeting.until) { meeting.active = false; onMeetingChange && onMeetingChange(false); }
-    const prevTarget = controls.target.clone();
-    controls.target.lerp(v3.set(desired.x, 0, desired.z), 0.07);
-    camera.position.add(controls.target.clone().sub(prevTarget));
-    const want = controls.target.clone().add(camDir.clone().multiplyScalar(70));
-    camera.position.lerp(want, 0.045);
-    camera.zoom += (desired.zoom - camera.zoom) * 0.07;
-    camera.updateProjectionMatrix();
+    if (camGoal) {
+      const g = camGoal;
+      if (g.dir) camDir.lerp(g.dir, 0.09).normalize();
+      const prevTarget = controls.target.clone();
+      controls.target.lerp(v3.set(g.x, 0, g.z), 0.09);
+      camera.position.add(controls.target.clone().sub(prevTarget));
+      const want = controls.target.clone().add(camDir.clone().multiplyScalar(70));
+      camera.position.lerp(want, 0.09);
+      camera.zoom += (g.zoom - camera.zoom) * 0.09;
+      camera.updateProjectionMatrix();
+      if (controls.target.distanceTo(v3.set(g.x, 0, g.z)) < 0.05 && Math.abs(camera.zoom - g.zoom) < 0.01) { camGoal = null; saveCam(); }
+    }
     controls.update();
     for (const c of cars) {
       const d = c.userData.drive;
@@ -651,12 +681,13 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   }
   animate();
 
-  return { update, preset, focusAgent, callMeeting,
+  return { update, preset, focusAgent, callMeeting, resetCamera,
     setPaused: v => { simPaused = !!v; },
     setSpeed: v => { speedMul = v || 1; },
     setAmbience, setOrbit: v => { orbitOn = !!v; },
     setFollow: id => { followId = id || null; },
     setPlumbob: id => { plumbobId = id || null; },
     debug: () => ({ active: meeting.active, frames, t: +clockT.getElapsedTime().toFixed(1), lastDt, invited: [...meeting.invited],
+      cam: { t: controls.target.toArray().map(v => +v.toFixed(2)), z: +camera.zoom.toFixed(3) },
       pos: [...entries.values()].map(e => [e.agent.id, +e.group.position.x.toFixed(1), +e.group.position.z.toFixed(1), e.agent.kind]) }) };
 }

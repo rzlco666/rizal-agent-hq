@@ -19,35 +19,40 @@
        -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   .mut{color:var(--mut)} .small{font-size:12px}
   button{font-family:inherit;transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+  .ic{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2.5px;flex-shrink:0}
   #app{display:flex;flex-direction:column;height:100vh}
 
-  /* ================= header — satu baris, tiga kelompok ================= */
-  header{display:flex;align-items:center;gap:14px;padding:10px 16px 10px;z-index:30;flex-wrap:nowrap}
+  /* ================= header — flat, satu garis, tanpa kartu melayang ================= */
+  header{display:flex;align-items:center;gap:16px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);z-index:30;flex-wrap:nowrap}
   .brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0}
-  .brand img{width:32px;height:32px;border-radius:9px}
-  .brand h1{font-size:15px;margin:0;line-height:1.1;letter-spacing:.06em;font-weight:800;white-space:nowrap}
-  .brand .mut{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:430px}
-  .pillnav{display:flex;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:3px;
-           box-shadow:0 1px 2px rgba(16,24,40,.05);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .brand img{width:30px;height:30px;border-radius:8px}
+  .brand h1{font-size:13.5px;margin:0;line-height:1.15;letter-spacing:.05em;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:7px}
+  .ver{font-size:9.5px;font-weight:700;color:var(--indigo);background:#eef2ff;border-radius:99px;padding:1px 7px;letter-spacing:.04em}
+  #clock{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:430px;line-height:1.2}
+  .pillnav{display:flex;gap:2px;background:#eef0f3;border-radius:99px;padding:3px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .pillnav::-webkit-scrollbar{display:none}
-  .pillnav button{background:transparent;border:none;color:#4b5568;border-radius:99px;padding:6px 11px;cursor:pointer;
-                  font-size:12.5px;font-weight:600;white-space:nowrap}
-  .pillnav button:hover{color:var(--txt);background:var(--card2)}
-  .pillnav button.on{background:var(--indigo);color:#fff;box-shadow:0 2px 8px rgba(79,70,229,.35)}
+  .pillnav button{background:transparent;border:none;color:#55617a;border-radius:99px;padding:6px 12px;cursor:pointer;
+                  font-size:12.5px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  .pillnav button:hover{color:var(--txt)}
+  .pillnav button.on{background:#fff;color:var(--indigo);box-shadow:0 1px 3px rgba(16,24,40,.14)}
   header .sp{flex:1;min-width:6px}
-  .hstatus{display:flex;align-items:center;gap:6px;flex-shrink:0}
-  #wsState{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:5px 11px;font-size:11.5px;color:var(--mut);white-space:nowrap}
-  .badge{background:var(--red);color:#fff;border-radius:99px;padding:4px 11px;font-weight:700;font-size:12px;cursor:pointer;border:1px solid transparent}
-  .badge.zero{background:var(--card);color:var(--mut);border-color:var(--line)}
-  #ageEl{white-space:nowrap}
-  .langsw{display:flex;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:2px}
+  .hstatus{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  #wsState{font-size:11.5px;color:var(--mut);white-space:nowrap;display:inline-flex;align-items:center}
+  .wsdot{width:8px;height:8px;border-radius:99px;display:inline-block;margin-right:6px;background:#c3cad4}
+  .wsdot.on{background:var(--green);animation:pulse 2.2s infinite}
+  .wsdot.warn{background:var(--yellow)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(29,184,119,.45)}70%{box-shadow:0 0 0 6px rgba(29,184,119,0)}100%{box-shadow:0 0 0 0 rgba(29,184,119,0)}}
+  .badge{background:#fdf0f0;color:#c23338;border:1px solid #f3c2c4;border-radius:99px;padding:5px 11px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .badge.zero{background:#fff;color:var(--mut);border-color:var(--line)}
+  #ageEl{white-space:nowrap;color:var(--mut2)}
+  .langsw{display:flex;gap:2px;background:#eef0f3;border-radius:99px;padding:2px}
   .langsw button{border:none;background:transparent;border-radius:99px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#64748b;cursor:pointer}
-  .langsw button.on{background:var(--indigo);color:#fff}
-  #searchBox{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 14px;font-size:12.5px;width:164px;color:var(--txt)}
-  #searchBox:focus{outline:2px solid #c7d2fe;border-color:#a5b4fc}
+  .langsw button.on{background:#fff;color:var(--txt);box-shadow:0 1px 3px rgba(16,24,40,.14)}
+  #searchBox{background:#f3f4f6;border:1px solid transparent;border-radius:99px;padding:7px 14px;font-size:12.5px;width:172px;color:var(--txt)}
+  #searchBox:focus{outline:none;background:#fff;border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
 
-  /* ================= main grid — semua panel DOCKED, tidak melayang ================= */
-  #main{position:relative;flex:1;min-height:0;display:grid;gap:12px;padding:2px 16px 16px;
+  /* ================= main grid — semua panel DOCKED ================= */
+  #main{position:relative;flex:1;min-height:0;display:grid;gap:12px;padding:12px 16px 16px;
         grid-template-columns:minmax(0,1fr) 350px;
         grid-template-rows:minmax(0,1fr) 240px;
         grid-template-areas:"stage panel" "dock panel"}
@@ -55,7 +60,7 @@
   #main.railHidden #panel{display:none}
   #main.dockCollapsed{grid-template-rows:minmax(0,1fr) 45px}
   #main.dockCollapsed .dbody{display:none}
-  #main.dockCollapsed #dockToggle{transform:rotate(180deg)}
+  #main.dockCollapsed #dockToggle svg{transform:rotate(180deg)}
 
   /* ---------- panggung 3D ---------- */
   #stageCard{grid-area:stage;position:relative;border-radius:var(--r-lg);overflow:hidden;background:#e9edf2;
@@ -76,9 +81,9 @@
              padding:8px 11px;max-width:300px;font-size:12.5px;display:none;z-index:9;box-shadow:var(--shadow)}
   #stageBar{position:absolute;top:12px;left:12px;display:flex;gap:8px;z-index:6;align-items:center}
   .segctl{display:flex;gap:2px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:99px;padding:3px;backdrop-filter:blur(6px)}
-  .segctl button{background:transparent;border:none;border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#4b5568}
+  .segctl button{background:transparent;border:none;border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;display:inline-flex;align-items:center;gap:6px}
   .segctl button:hover{color:var(--txt);background:#fff}
-  #btnPanel{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:600;color:#4b5568;backdrop-filter:blur(6px)}
+  #btnPanel{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;backdrop-filter:blur(6px);display:inline-flex;align-items:center;gap:6px}
   #btnPanel:hover{border-color:#a5b4fc;color:var(--txt)}
   #hint{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.82);border:1px solid var(--line);border-radius:99px;
         padding:5px 13px;font-size:11px;color:var(--mut);z-index:5;white-space:nowrap;backdrop-filter:blur(6px)}
@@ -86,35 +91,36 @@
   #grid2d{display:none;position:absolute;inset:0;overflow:auto;padding:58px 14px 64px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;z-index:3;background:#edf0f3;align-content:start}
   .card2d{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:11px;cursor:pointer}
   .card2d:hover{border-color:var(--blue)}
+  .mono{display:inline-flex;width:30px;height:30px;border-radius:9px;color:#fff;font-weight:800;align-items:center;justify-content:center;font-size:14px;vertical-align:-7px;margin-right:7px}
+  .mono.sm{width:22px;height:22px;font-size:11px;border-radius:7px;vertical-align:-5px;margin-right:6px}
 
-  /* ---------- toolbar bawah panggung: sim (kiri) + zona (tengah) ---------- */
-  #simBar{position:absolute;left:12px;bottom:12px;z-index:8;display:flex;gap:6px;align-items:center;background:rgba(255,255,255,.94);
-          border:1px solid var(--line);border-radius:99px;padding:4px 6px;box-shadow:var(--shadow);backdrop-filter:blur(6px)}
-  #simBar button{background:transparent;border:1px solid transparent;border-radius:99px;min-width:32px;height:28px;padding:0 8px;cursor:pointer;font-size:13px}
-  #simBar button:hover{background:var(--card2)}
-  #simBar button.on{background:#eef2ff;border-color:#c7d2fe}
-  #simBar .seg{display:flex;gap:2px;background:#eef0f3;border-radius:99px;padding:2px}
-  #simBar .seg button{border:none;background:transparent;min-width:29px;height:23px;font-size:11.5px;font-weight:700;color:#64748b}
-  #simBar .seg button.on{background:#fff;color:#312e81;box-shadow:0 1px 4px rgba(15,23,42,.15)}
-  #zoneBar{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;display:flex;gap:2px;z-index:6;background:rgba(255,255,255,.94);
-           border:1px solid var(--line);border-radius:99px;padding:3px;box-shadow:var(--shadow);backdrop-filter:blur(6px);max-width:96%}
-  #zoneBar button{background:transparent;border:none;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#4b5568;white-space:nowrap}
-  #zoneBar button i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
-  #zoneBar button:hover{color:var(--txt);background:var(--card2)}
-  #zoneBar button.on{background:var(--indigo);color:#fff}
-  @media (max-width:1180px){#simBar{bottom:56px}}
+  /* ---------- SATU bar kontrol bawah panggung: jeda · reset kamera · zona ---------- */
+  #stageCtl{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;z-index:8;display:flex;align-items:center;gap:2px;
+            background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:99px;padding:4px;box-shadow:var(--shadow);
+            backdrop-filter:blur(6px);max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
+  #stageCtl::-webkit-scrollbar{display:none}
+  .ctlbtn{background:transparent;border:none;border-radius:99px;width:34px;height:30px;cursor:pointer;color:#55617a;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ctlbtn:hover{background:var(--card2);color:var(--txt)}
+  .ctlbtn.on{background:#eef2ff;color:var(--indigo)}
+  .ctlsep{width:1px;height:20px;background:var(--line);margin:0 5px;flex-shrink:0}
+  .zones{display:flex;gap:2px}
+  .zones button{background:transparent;border:none;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;white-space:nowrap}
+  .zones button i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
+  .zones button:hover{color:var(--txt);background:var(--card2)}
+  .zones button.on{background:var(--indigo);color:#fff}
 
-  /* ---------- rel kanan: kartu bertumpuk, satu kolom scroll ---------- */
+  /* ---------- rel kanan ---------- */
   aside#panel{grid-area:panel;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px;min-height:0}
   .pcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:15px 16px}
   .pcard h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut2);margin:0 0 11px;font-weight:800;display:flex;align-items:center;gap:7px}
+  .pcard h2 .ic{width:14px;height:14px}
   .kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .kpi div{background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:9px 11px}
   .kpi b{font-size:17px;display:block;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
   .kpi span{color:var(--mut);font-size:11px;line-height:1.35;display:block;margin-top:1px}
-  .alertCard{background:#fff5f5;border:1px solid #f6c6c8;border-radius:12px;padding:10px 12px;margin:8px 0}
-  .alertCard.warn{background:#fff9e8;border-color:#ecd28a}
-  .alertCard.act{background:#fff4e8;border-color:#f2c193}
+  .alertCard{background:#fff5f5;border:1px solid #f6c6c8;border-left:4px solid var(--red);border-radius:12px;padding:10px 12px;margin:8px 0}
+  .alertCard.warn{background:#fff9e8;border-color:#ecd28a;border-left-color:var(--yellow)}
+  .alertCard.act{background:#fff4e8;border-color:#f2c193;border-left-color:var(--orange)}
   .alertCard b{font-size:13px}
   .alertCard .needs{color:#5a6a86;font-size:12.5px;margin:3px 0 6px}
   .alertCard button{background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:12px}
@@ -131,20 +137,21 @@
   .envrow span{color:var(--mut)} .envrow b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
   .envcommits{margin-top:8px;font-size:12px;color:#4b5568;line-height:1.65}
 
-  /* ---------- dock bawah: tugas & log, sejajar rapi di bawah panggung ---------- */
+  /* ---------- dock bawah ---------- */
   #dock{grid-area:dock;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);
         padding:10px 16px 12px;min-height:0;display:flex;flex-direction:column}
   #dock .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;flex:1;min-height:0}
   .dcol{display:flex;flex-direction:column;min-height:0;min-width:0}
   .dhead{display:flex;align-items:center;gap:8px;padding:2px 0 7px}
-  .dhead h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut2);margin:0;font-weight:800}
+  .dhead h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut2);margin:0;font-weight:800;display:flex;align-items:center;gap:7px}
+  .dhead h2 .ic{width:14px;height:14px}
   .dhead .sp{flex:1}
   .dhead label{font-size:11.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
-  #dockToggle{background:var(--card2);border:1px solid var(--line);border-radius:99px;width:24px;height:24px;cursor:pointer;color:var(--mut);font-size:12px;line-height:1;transition:transform .2s}
+  #dockToggle{background:var(--card2);border:1px solid var(--line);border-radius:99px;width:24px;height:24px;cursor:pointer;color:var(--mut);display:inline-flex;align-items:center;justify-content:center}
+  #dockToggle svg{width:13px;height:13px;transition:transform .2s}
   .dbody{overflow-y:auto;min-height:0;padding-right:4px}
   .task,.evt{background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:8px 11px;margin:0 0 7px;font-size:12.5px}
   .task b.ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.8px;line-height:1.4}
-  .evt .etxt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .pill{border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700;border:1px solid var(--grey);color:var(--mut);white-space:nowrap;flex-shrink:0}
   .pill.bekerja{border-color:var(--green);color:#0d9668} .pill.berpikir{border-color:var(--blue);color:var(--blue)}
   .pill.menunggu-rizal{border-color:var(--orange);color:var(--orange)} .pill.selesai{border-color:var(--green);color:#0d9668}
@@ -153,26 +160,26 @@
   .steps{margin:5px 0 0;padding-left:17px;color:var(--mut);font-size:12px}
   .steps li.done{color:#0d9668}
 
-  /* ---------- drawer detail ---------- */
+  /* ---------- drawer ---------- */
   #drawer{position:fixed;top:0;right:-480px;width:452px;max-width:94vw;height:100vh;background:rgba(255,255,255,.98);border-left:1px solid var(--line);
           z-index:60;transition:right .28s cubic-bezier(.32,.72,.28,1);padding:20px;overflow:auto;box-shadow:-18px 0 44px rgba(16,24,40,.16)}
   #drawer.open{right:0}
   #drawer h3{margin:2px 0 4px;font-size:18px}
-  #drawerClose{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px}
+  #drawerClose{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
   .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
-  .tabs button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:#4b5568}
+  .tabs button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:#55617a}
   .tabs button.on{border-color:var(--indigo);color:var(--indigo);background:#eef2ff}
   .kv{display:grid;grid-template-columns:110px 1fr;gap:5px 10px;font-size:13px}
   .kv dt{color:var(--mut)} .kv dd{margin:0}
 
-  /* ---------- overlay (papan / fasilitas / model) ---------- */
+  /* ---------- overlay ---------- */
   .overlay{position:absolute;inset:0;background:#f3f4f6;z-index:30;padding:20px 22px;overflow:auto;opacity:0;pointer-events:none;
            transform:translateY(10px);transition:opacity .22s ease,transform .22s ease}
   .overlay.open{opacity:1;pointer-events:auto;transform:none}
   .ovHead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-  .ovHead h2{margin:0;font-size:17px}
+  .ovHead h2{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
   .ovHead .sp{flex:1}
-  .ovHead button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 13px;cursor:pointer;font-size:12.5px}
+  .ovHead button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 13px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
   #boardCols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start}
   @media (max-width:1100px){#boardCols{grid-template-columns:repeat(2,1fr)}}
   .bcol{background:#ffffff;border:1px solid var(--line);border-radius:var(--r-md);padding:11px;min-height:160px;box-shadow:0 1px 2px rgba(16,24,40,.05)}
@@ -219,7 +226,6 @@
   ::-webkit-scrollbar-thumb{background:#c6cedb;border-radius:99px;border:2px solid transparent;background-clip:content-box}
   ::-webkit-scrollbar-thumb:hover{background:#8fa1ba;border:2px solid transparent;background-clip:content-box}
 
-  /* ---------- layar lebih kecil: rel jadi overlay, header menyusut ---------- */
   @media (max-width:1180px){
     #main{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "dock"}
     aside#panel{position:fixed;top:64px;right:12px;width:350px;max-width:92vw;max-height:calc(100vh - 84px);z-index:50;
@@ -227,34 +233,58 @@
     aside#panel.show{display:flex}
     #ageEl{display:none}
     #searchBox{width:150px}
-    .brand .mut{display:none}
+    #clock{display:none}
   }
   @media (max-width:900px){#dock .cols{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-mega" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+    <symbol id="i-kanban" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v6"/><path d="M13 7v10"/><path d="M18 7v4"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7.5h2M13 7.5h2M9 11.5h2M13 11.5h2M9 15.5h2M13 15.5h2"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.2" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8c0-1.1 1.2-1.8 2.2-1.2l11 6.7c.9.6.9 1.9 0 2.5l-11 6.7c-1 .6-2.2-.1-2.2-1.2V4.8z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-focus" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 3.5-5.5"/><path d="M4.6 19a9.5 9.5 0 1 1 14.8 0"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-3.9 4-6 8-6s7.2 2.1 8 6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  </defs>
+</svg>
 <div id="app">
 <header>
   <div class="brand">
     <img src="logo.svg" alt="Logo">
     <div>
-      <h1>RIZAL AGENT HQ</h1>
-      <div class="mut">Kantor Virtual · v2.4 · <span id="clock">memuat…</span></div>
+      <h1>RIZAL AGENT HQ <span class="ver">v2.5</span></h1>
+      <div id="clock">memuat…</div>
     </div>
   </div>
   <nav class="pillnav">
-    <button data-zone="semua" class="on">🏢 <span data-i18n="navCtrl">Ruang kendali</span></button>
-    <button id="navMeet">📣 Panggil meeting</button>
-    <button id="navBoard">📋 <span data-i18n="navBoard">Papan tugas</span></button>
-    <button id="navFac">🛠️ <span data-i18n="navFac">Fasilitas</span></button>
-    <button id="navModels">🧠 <span data-i18n="navModels">Model &amp; Provider</span></button>
-    <button data-zone="alert">🚨 <span data-i18n="navAlert">Fokus alert</span></button>
+    <button data-zone="semua" class="on"><svg class="ic"><use href="#i-grid"/></svg><span data-i18n="navCtrl">Ruang kendali</span></button>
+    <button id="navMeet"><svg class="ic"><use href="#i-mega"/></svg>Panggil meeting</button>
+    <button id="navBoard"><svg class="ic"><use href="#i-kanban"/></svg><span data-i18n="navBoard">Papan tugas</span></button>
+    <button id="navFac"><svg class="ic"><use href="#i-building"/></svg><span data-i18n="navFac">Fasilitas</span></button>
+    <button id="navModels"><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="navModels">Model &amp; Provider</span></button>
+    <button data-zone="alert"><svg class="ic"><use href="#i-bell"/></svg><span data-i18n="navAlert">Fokus alert</span></button>
   </nav>
   <div class="sp"></div>
   <div class="hstatus">
-    <span id="wsState">menghubungkan…</span>
-    <span class="badge zero" id="alertBadge" title="Alert aktif">🚨 0</span>
-    <span id="ageEl" class="mut small"></span>
+    <span id="wsState"><i class="wsdot"></i>menghubungkan…</span>
+    <button class="badge zero" id="alertBadge" title="Alert aktif"><svg class="ic"><use href="#i-bell"/></svg><span id="alertCount">0</span></button>
+    <span id="ageEl" class="small"></span>
     <div class="langsw"><button data-lang="id">ID</button><button data-lang="en">EN</button><button data-lang="zh">中文</button></div>
     <input id="searchBox" type="search" data-i18n-ph="searchPh" placeholder="Cari agen atau tim…">
   </div>
@@ -267,47 +297,45 @@
     <div id="grid2d"></div>
     <div id="stageBar">
       <div class="segctl">
-        <button data-cam="iso">🧊 <span data-i18n="camIso">Isometrik</span></button>
-        <button data-cam="atas">🛰️ <span data-i18n="camTop">Atas</span></button>
-        <button id="btn2d">🗂️ <span data-i18n="mode2d">Mode 2D</span></button>
+        <button data-cam="iso"><svg class="ic"><use href="#i-box"/></svg><span data-i18n="camIso">Isometrik</span></button>
+        <button data-cam="atas"><svg class="ic"><use href="#i-cross"/></svg><span data-i18n="camTop">Atas</span></button>
+        <button id="btn2d"><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="mode2d">Mode 2D</span></button>
       </div>
-      <button id="btnPanel">📊 <span data-i18n="panelT">Panel</span></button>
+      <button id="btnPanel"><svg class="ic"><use href="#i-panel"/></svg><span data-i18n="panelT">Panel</span></button>
     </div>
     <div id="bubbleTip"></div>
-    <div id="hint" data-i18n="hintT">Klik agen untuk detail · Seret untuk geser · Scroll untuk zoom</div>
-    <div id="simBar">
-      <button id="simPause" data-i18n-title="simPauseT" title="Jeda / lanjutkan animasi">⏸️</button>
-      <div class="seg" id="simSpeed"><button data-v="1" class="on">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></div>
-      <button id="simAmb" title="Suasana: siang / senja / malam">🌞</button>
-      <button id="simOrbit" data-i18n-title="simOrbitT" title="Kamera mengorbit otomatis">🎥</button>
-      <button id="simFollow" data-i18n-title="simFollowT" title="Kamera mengikuti agen terpilih">🎯</button>
-    </div>
-    <div id="zoneBar">
-      <button data-zone="semua" class="on"><span data-i18n="zoneAll">Seluruh kantor</span></button>
-      <button data-zone="Muse"><i style="background:#7db4ff"></i><span data-i18n="zoneClaude">Studio Muse</span></button>
-      <button data-zone="utama"><i style="background:#f2c94c"></i><span data-i18n="zoneOmp">Ruang OMP</span></button>
-      <button data-zone="workers"><i style="background:#5fd68b"></i><span data-i18n="zoneWorkers">Workers</span></button>
-      <button data-zone="cursor"><i style="background:#67d7b5"></i><span data-i18n="zoneCursor">Cursor</span></button>
-      <button data-zone="meeting"><i style="background:#b49af2"></i><span data-i18n="zoneMeeting">Meeting</span></button>
-      <button data-zone="mcp"><i style="background:#8fa3bf"></i><span data-i18n="zoneMcp">Server MCP</span></button>
+    <div id="hint" data-i18n="hintT">Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail</div>
+    <div id="stageCtl">
+      <button id="simPause" class="ctlbtn" data-i18n-title="simPauseT" title="Jeda / lanjutkan animasi"><svg class="ic"><use href="#i-pause"/></svg></button>
+      <button id="camReset" class="ctlbtn" title="Reset kamera ke tampilan awal"><svg class="ic"><use href="#i-focus"/></svg></button>
+      <div class="ctlsep"></div>
+      <div class="zones">
+        <button data-zone="semua" class="on"><span data-i18n="zoneAll">Seluruh kantor</span></button>
+        <button data-zone="Muse"><i style="background:#7db4ff"></i><span data-i18n="zoneClaude">Studio Muse</span></button>
+        <button data-zone="utama"><i style="background:#f2c94c"></i><span data-i18n="zoneOmp">Ruang OMP</span></button>
+        <button data-zone="workers"><i style="background:#5fd68b"></i><span data-i18n="zoneWorkers">Workers</span></button>
+        <button data-zone="cursor"><i style="background:#67d7b5"></i><span data-i18n="zoneCursor">Cursor</span></button>
+        <button data-zone="meeting"><i style="background:#b49af2"></i><span data-i18n="zoneMeeting">Meeting</span></button>
+        <button data-zone="mcp"><i style="background:#8fa3bf"></i><span data-i18n="zoneMcp">Server MCP</span></button>
+      </div>
     </div>
   </section>
 
   <aside id="panel">
     <div class="pcard">
-      <h2 data-i18n="secToday">Ringkasan hari ini</h2>
+      <h2><svg class="ic"><use href="#i-cal"/></svg><span data-i18n="secToday">Ringkasan hari ini</span></h2>
       <div class="kpi" id="kpi"></div>
     </div>
     <div class="pcard">
-      <h2>🚨 <span data-i18n="secNeeds">Butuh Rizal</span></h2>
+      <h2><svg class="ic"><use href="#i-bell"/></svg><span data-i18n="secNeeds">Butuh Rizal</span></h2>
       <div id="alerts"><p class="mut small">Tidak ada alert aktif. Semua aman.</p></div>
     </div>
     <div class="pcard">
-      <h2 data-i18n="secQuota">Kuota provider</h2>
+      <h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="secQuota">Kuota provider</span></h2>
       <div id="quotas"></div>
     </div>
     <div class="pcard">
-      <h2 data-i18n="secEnv">Lingkungan (konteks)</h2>
+      <h2><svg class="ic"><use href="#i-server"/></svg><span data-i18n="secEnv">Lingkungan (konteks)</span></h2>
       <div id="env" class="small"></div>
     </div>
   </aside>
@@ -315,13 +343,13 @@
   <section id="dock">
     <div class="cols">
       <div class="dcol">
-        <div class="dhead"><h2>🧑‍💼 <span data-i18n="tasksT">Tugas (manusiawi)</span></h2></div>
+        <div class="dhead"><h2><svg class="ic"><use href="#i-user"/></svg><span data-i18n="tasksT">Tugas (manusiawi)</span></h2></div>
         <div class="dbody" id="tasks"></div>
       </div>
       <div class="dcol">
-        <div class="dhead"><h2>📜 <span data-i18n="logT">Log (manusiawi)</span></h2><div class="sp"></div>
+        <div class="dhead"><h2><svg class="ic"><use href="#i-list"/></svg><span data-i18n="logT">Log (manusiawi)</span></h2><div class="sp"></div>
           <label><input type="checkbox" id="rawToggle"> <span data-i18n="rawLbl">lihat mentah</span></label>
-          <button id="dockToggle" title="Ciutkan / bentangkan panel bawah">▾</button>
+          <button id="dockToggle" title="Ciutkan / bentangkan panel bawah"><svg class="ic"><use href="#i-chevd"/></svg></button>
         </div>
         <div class="dbody" id="events"></div>
       </div>
@@ -329,22 +357,22 @@
   </section>
 
   <div id="boardOverlay" class="overlay">
-    <div class="ovHead"><h2>📋 <span data-i18n="boardT">Papan Tugas</span></h2><span class="mut small" data-i18n="boardSub">Semua tugas agen, dikelompokkan per fase — diperbarui langsung</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-kanban"/></svg><span data-i18n="boardT">Papan Tugas</span></h2><span class="mut small" data-i18n="boardSub">Semua tugas agen, dikelompokkan per fase — diperbarui langsung</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
     <div id="boardCols"></div>
   </div>
   <div id="modelsOverlay" class="overlay">
-    <div class="ovHead"><h2>🧠 <span data-i18n="modT">Dashboard Model &amp; Provider</span></h2><span class="mut small" data-i18n="modSub">Semua model dari semua provider — request, token, dan biaya per model (data omp stats)</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="modT">Dashboard Model &amp; Provider</span></h2><span class="mut small" data-i18n="modSub">Semua model dari semua provider — request, token, dan biaya per model (data omp stats)</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
     <div id="modelsBody"></div>
   </div>
   <div id="facOverlay" class="overlay">
-    <div class="ovHead"><h2>🛠️ <span data-i18n="facT">Fasilitas &amp; Lingkungan</span></h2><span class="mut small" data-i18n="facSub">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-building"/></svg><span data-i18n="facT">Fasilitas &amp; Lingkungan</span></h2><span class="mut small" data-i18n="facSub">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
     <div id="facBody"></div>
   </div>
 </div>
 </div>
 
 <div id="drawer">
-  <button id="drawerClose" style="float:right">✕ Tutup</button>
+  <button id="drawerClose" style="float:right"><svg class="ic"><use href="#i-x"/></svg>Tutup</button>
   <div id="drawerBody"></div>
 </div>
 

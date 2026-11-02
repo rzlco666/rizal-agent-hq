@@ -25,11 +25,11 @@ function renderKpi(s) {
 function renderAlerts(s) {
   const aktif = s.alerts.filter(a => a.state === 'aktif');
   const badge = $('#alertBadge');
-  badge.textContent = `🚨 ${aktif.length}`;
+  $('#alertCount').textContent = aktif.length;
   badge.classList.toggle('zero', aktif.length === 0);
   if (!aktif.length) { $('#alerts').innerHTML = `<p class="mut small">${t('allSafe')}</p>`; return; }
   const cls = l => l === 'kritis' ? '' : l === 'perlu-action' ? 'act' : 'warn';
-  const lbl = l => l === 'kritis' ? '🔴 KRITIS' : l === 'perlu-action' ? '🟠 PERLU ACTION' : '🟡 PERINGATAN';
+  const lbl = l => l === 'kritis' ? 'KRITIS' : l === 'perlu-action' ? 'PERLU ACTION' : 'PERINGATAN';
   $('#alerts').innerHTML = aktif.map(a => `
     <div class="alertCard ${cls(a.level)}">
       <b>${lbl(a.level)} — ${esc(a.title)}</b>
@@ -74,7 +74,7 @@ function renderQuotas(s) {
   if (!rows.length) { $('#quotas').innerHTML = '<p class="mut small">Belum terbaca.</p>'; return; }
   const fb = s.fallback || {};
   const fbHtml = fb.label ? `<div class="qrow" style="border:1px solid ${fb.active ? '#e5484d' : '#c9d2dd'};border-radius:8px;padding:6px 8px;margin-top:8px">
-      <div class="top"><span>⛑️ Fallback utama · ${esc(fb.label)}</span><b>${fb.active ? 'AKTIF' : 'Siaga'}</b></div>
+      <div class="top"><span>Fallback utama · ${esc(fb.label)}</span><b>${fb.active ? 'AKTIF' : 'Siaga'}</b></div>
       <div class="mut small">${esc(fb.model || '')}${fb.reserve_label ? `<br>Cadangan terakhir: ${esc(fb.reserve_label)}${fb.reserve_balance_usd != null ? ' · saldo ±' + fmtUsd(fb.reserve_balance_usd) : ''}` : ''}<br>${esc(fb.note || '')}</div>
     </div>` : '';
   $('#quotas').innerHTML = rows.map(q => `
@@ -88,17 +88,17 @@ function renderQuotas(s) {
 function renderEnv(s) {
   const e = s.env;
   $('#env').innerHTML = `
-    <div class="envrow"><span>🖥️ Host</span><b>${esc(e.hostname)}</b></div>
+    <div class="envrow"><span>Host</span><b>${esc(e.hostname)}</b></div>
     <div class="envrow"><span>CPU · RAM · Disk</span><b>${e.cpu_percent}% · ${e.mem_percent}% · ${e.disk_percent}%</b></div>
-    <div class="envrow"><span>🐳 Docker jalan</span><b>${e.docker_up.length ? esc(e.docker_up.join(', ')) : '—'}</b></div>
-    ${e.docker_down.length ? `<div class="envrow"><span>🐳 Berhenti</span><b>${esc(e.docker_down.join(', '))}</b></div>` : ''}
-    <div class="envrow"><span>📦 Proses · ⏱️ Uptime</span><b>${e.process_total} · ${Math.floor(e.uptime_sec / 3600)} jam</b></div>
+    <div class="envrow"><span>Docker jalan</span><b>${e.docker_up.length ? esc(e.docker_up.join(', ')) : '—'}</b></div>
+    ${e.docker_down.length ? `<div class="envrow"><span>Berhenti</span><b>${esc(e.docker_down.join(', '))}</b></div>` : ''}
+    <div class="envrow"><span>Proses · Uptime</span><b>${e.process_total} · ${Math.floor(e.uptime_sec / 3600)} jam</b></div>
     ${e.recent_commits.length ? '<div class="envcommits"><b>Commit terbaru:</b><br>' + e.recent_commits.slice(0, 4).map(c => '• ' + esc(c)).join('<br>') + '</div>' : ''}`;
 }
 
 function renderTasks(s) {
   if (!s.tasks.length) { $('#tasks').innerHTML = '<p class="mut small">Belum ada tugas terbaca.</p>'; return; }
-  $('#tasks').innerHTML = s.tasks.map(t => `
+  $('#tasks').innerHTML = s.tasks.slice(0, 8).map(t => `
     <div class="task">
       <div style="display:flex;gap:8px;align-items:baseline">
         <b class="ttl" style="flex:1">${t.summary ? '✨ ' + esc(t.summary) : esc(t.title)}</b>
@@ -111,7 +111,7 @@ function renderTasks(s) {
 
 function renderEvents(s) {
   if (!s.events.length) { $('#events').innerHTML = '<p class="mut small">Belum ada log.</p>'; return; }
-  $('#events').innerHTML = s.events.map(e => `
+  $('#events').innerHTML = s.events.slice(0, 14).map(e => `
     <div class="evt">
       <span class="mut small">${fmtTime(e.at)}</span> ${esc(state.raw && e.raw ? e.raw : e.human)}
       <span class="mut small">· ${esc(agentById(e.agent_id)?.name || e.agent_id)}</span>
@@ -121,7 +121,7 @@ function renderEvents(s) {
 function render2d(s) {
   $('#grid2d').innerHTML = s.agents.map(a => `
     <div class="card2d" data-sel="${esc(a.id)}">
-      <b>${esc(a.emoji)} ${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${STATUS_LABEL[a.status] || esc(a.status)}</span>
+      <b><span class="mono sm" style="background:${esc(a.color || '#4a7dff')}">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span>${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${STATUS_LABEL[a.status] || esc(a.status)}</span>
       <div class="small" style="margin-top:5px">${esc(a.activity)}</div>
       <div class="mut small">${esc(a.role)} · token ${fmtTok(a.usage.input_tokens + a.usage.output_tokens)} · ${fmtUsd(a.usage.cash_usd + a.usage.shadow_usd)}</div>
     </div>`).join('');
@@ -147,7 +147,7 @@ function renderDrawer() {
   const s = state.snap;
   const u = a.usage;
   const head = `
-    <h3>${esc(a.emoji)} ${esc(a.name)}</h3>
+    <h3><span class="mono" style="background:${esc(a.color || '#4a7dff')}">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span>${esc(a.name)}</h3>
     <div><span class="pill ${esc(a.status)}">${STATUS_LABEL[a.status] || esc(a.status)}</span>
     <span class="mut small"> ${esc(a.role)}</span></div>
     <p>${esc(a.activity)}</p>
@@ -224,22 +224,22 @@ function renderFac(s) {
   const bar = (label, pct) => `<div class="small">${label} — ${pct}%</div><div class="fbar"><i style="width:${Math.min(pct, 100)}%"></i></div>`;
   const jebol = s.quotas.filter(q => q.percent != null && q.percent >= 100);
   $('#facBody').innerHTML = `
-    <div class="fcard"><h3>🖥️ Mesin Host — ${esc(e.hostname)}</h3>
+    <div class="fcard"><h3>Mesin Host — ${esc(e.hostname)}</h3>
       ${bar('CPU', e.cpu_percent)}${bar('RAM', e.mem_percent)}${bar('Disk', e.disk_percent)}
-      <div class="small mut">⏱️ Uptime ${Math.floor(e.uptime_sec / 3600)} jam · 📦 ${e.process_total} proses berjalan</div></div>
-    <div class="fcard"><h3>🐳 Docker</h3>
+      <div class="small mut">Uptime ${Math.floor(e.uptime_sec / 3600)} jam · ${e.process_total} proses berjalan</div></div>
+    <div class="fcard"><h3>Docker</h3>
       ${e.docker_up.length ? e.docker_up.map(d => `<span class="fchip">${esc(d)}</span>`).join('') : '<span class="mut small">Tidak ada kontainer jalan.</span>'}
       ${e.docker_down.length ? '<div style="margin-top:6px">' + e.docker_down.map(d => `<span class="fchip down">${esc(d)} (berhenti)</span>`).join('') + '</div>' : ''}</div>
-    <div class="fcard"><h3>🌐 Koneksi Muse (Tailscale)</h3>
-      <div class="small">${e.tailscale_muse_online == null ? 'Status tidak terbaca.' : e.tailscale_muse_online ? '🟢 Muse terhubung ke tailnet — jalur SSH WSL aktif.' : '🔴 Muse tidak terlihat di tailnet.'}</div>
+    <div class="fcard"><h3>Koneksi Muse (Tailscale)</h3>
+      <div class="small">${e.tailscale_muse_online == null ? 'Status tidak terbaca.' : e.tailscale_muse_online ? 'Muse terhubung ke tailnet — jalur SSH WSL aktif.' : 'Muse tidak terlihat di tailnet.'}</div>
       <div class="small mut" style="margin-top:6px">Layanan HQ: http://localhost:8900 · data diperbarui ${new Date(s.generated_at).toLocaleTimeString(LOC())} WIB</div></div>
-    <div class="fcard"><h3>🚨 Kuota jebol</h3>
+    <div class="fcard"><h3>Kuota jebol</h3>
       ${jebol.length ? jebol.map(q => `<span class="fchip hot">${esc(q.provider)} · ${esc(q.label)} ${q.percent}%</span>`).join('') : '<span class="mut small">Semua kuota aman.</span>'}
-      ${s.fallback?.label ? `<div class="small" style="margin-top:7px">⛑️ Fallback utama: <b>${esc(s.fallback.label)}</b> — ${s.fallback.active ? 'AKTIF' : 'siaga'}${s.fallback.reserve_balance_usd != null ? ` · cadangan DeepSeek langsung ±${fmtUsd(s.fallback.reserve_balance_usd)}` : ''}</div>` : ''}</div>
-    <div class="fcard"><h3>📝 Commit terbaru di mesin</h3>
+      ${s.fallback?.label ? `<div class="small" style="margin-top:7px">Fallback utama: <b>${esc(s.fallback.label)}</b> — ${s.fallback.active ? 'AKTIF' : 'siaga'}${s.fallback.reserve_balance_usd != null ? ` · cadangan DeepSeek langsung ±${fmtUsd(s.fallback.reserve_balance_usd)}` : ''}</div>` : ''}</div>
+    <div class="fcard"><h3>Commit terbaru di mesin</h3>
       ${e.recent_commits.length ? e.recent_commits.map(c => `<div class="evt" style="margin:5px 0">${esc(c)}</div>`).join('') : '<p class="mut small">Tidak terbaca.</p>'}</div>
-    <div class="fcard"><h3>🏢 Tentang kantor ini</h3>
-      <div class="small">Rizal Agent HQ v2.4 — Rust (Axum + WebSocket + SQLite) satu binary + Three.js. ${s.agents.length} agen tampil, ${s.agents.filter(x => x.status === 'bekerja').length} sedang bekerja. Klik interior kantor (sofa, meja tenis, rak server, layar meeting) untuk interaksi.</div></div>`;
+    <div class="fcard"><h3>Tentang kantor ini</h3>
+      <div class="small">Rizal Agent HQ v2.5 — Rust (Axum + WebSocket + SQLite) satu binary + Three.js. ${s.agents.length} agen tampil, ${s.agents.filter(x => x.status === 'bekerja').length} sedang bekerja. Klik interior kantor (sofa, meja tenis, rak server, layar meeting) untuk interaksi.</div></div>`;
 }
 
 // ---------- dashboard model & provider ----------
@@ -284,18 +284,18 @@ function renderModels(s) {
 // ================= i18n: ID / EN / 中文 (kerangka UI; kalimat aktivitas agen dari server tetap apa adanya) =================
 let LANG = localStorage.getItem('hq-lang') || 'id';
 const DICT = {
-  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Klik agen untuk detail · Seret untuk geser · Scroll untuk zoom', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP',
-    kpiReq:'request OMP tercatat', kpiTok:'token (masuk+keluar)', kpiCash:'biaya TUNAI', kpiShadow:'biaya bayangan (langganan)', kpiBal:'estimasi saldo DeepSeek', working:'bekerja', ofAgents:'dari {n} agent tampil', allSafe:'Tidak ada alert aktif. Semua aman.', ack:'✅ Sudah saya tangani', snooze:'⏰ Tunda', since:'Sejak', agentW:'agent', colRun:'🏃 Sedang berjalan', colWait:'✋ Menunggu Rizal', colDone:'✅ Selesai', colFail:'❌ Gagal',
+  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP',
+    kpiReq:'request OMP tercatat', kpiTok:'token (masuk+keluar)', kpiCash:'biaya TUNAI', kpiShadow:'biaya bayangan (langganan)', kpiBal:'estimasi saldo DeepSeek', working:'bekerja', ofAgents:'dari {n} agent tampil', allSafe:'Tidak ada alert aktif. Semua aman.', ack:'Sudah saya tangani', snooze:'Tunda', since:'Sejak', agentW:'agent', colRun:'Sedang berjalan', colWait:'Menunggu Rizal', colDone:'Selesai', colFail:'Gagal',
     mModel:'Model', mProvider:'Provider', mReq:'Request', mTokIn:'Token masuk', mCost:'Biaya', mClass:'Kelas', mShare:'Pangsa', mFailed:'gagal', mOut:'keluar', mCache:'cache', mCash:'tunai', mShadow:'bayangan', modelsEmpty:'Belum ada data model — OMP stats belum terbaca.', modelsNote:'Kelas TUNAI = uang nyata keluar (DeepSeek API & model berbayar gateway). BAYANGAN = setara-API provider langganan, bukan tagihan baru (OpenCode Go termasuk bayangan — meteran limit dari langganan flat $10/bln). GRATIS = model $0. Diurutkan dari biaya terbesar.',
-    clsTunai:'TUNAI', clsBayangan:'BAYANGAN', clsGratis:'GRATIS', tabSummary:'Ringkasan', tabTasks:'Tugas', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sesi & File', toastAck:'✅ Alert ditandai sudah ditangani — tersimpan, tidak akan muncul lagi.', toastSnooze:'⏰ Alert ditunda {h} jam — tersimpan.', toastFail:'❌ Aksi alert gagal terkirim — cek koneksi ke server HQ.', updatedAgo:'diperbarui {n} dtk lalu', simPauseT:'Jeda / lanjutkan animasi', simOrbitT:'Kamera mengorbit otomatis', simFollowT:'Kamera mengikuti agen terpilih', pickAgentFirst:'Pilih agen dulu (klik figurnya), lalu aktifkan Ikuti 🎯', raw:'LIHAT MENTAH' },
-  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Click an agent for details · Drag to pan · Scroll to zoom', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers',
-    kpiReq:'OMP requests recorded', kpiTok:'tokens (in+out)', kpiCash:'CASH cost', kpiShadow:'shadow cost (subscriptions)', kpiBal:'est. DeepSeek balance', working:'working', ofAgents:'of {n} agents shown', allSafe:'No active alerts. All clear.', ack:'✅ Handled', snooze:'⏰ Snooze', since:'Since', agentW:'agent', colRun:'🏃 In progress', colWait:'✋ Waiting for Rizal', colDone:'✅ Done', colFail:'❌ Failed',
+    clsTunai:'TUNAI', clsBayangan:'BAYANGAN', clsGratis:'GRATIS', tabSummary:'Ringkasan', tabTasks:'Tugas', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sesi & File', toastAck:'Alert ditandai sudah ditangani — tersimpan, tidak akan muncul lagi.', toastSnooze:'Alert ditunda {h} jam — tersimpan.', toastFail:'Aksi alert gagal terkirim — cek koneksi ke server HQ.', updatedAgo:'diperbarui {n} dtk lalu', simPauseT:'Jeda / lanjutkan animasi', simOrbitT:'Kamera mengorbit otomatis', simFollowT:'Kamera mengikuti agen terpilih', pickAgentFirst:'Pilih agen dulu (klik figurnya), lalu aktifkan Ikuti 🎯', raw:'LIHAT MENTAH' },
+  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Drag to pan · Scroll to zoom · Click an agent for details', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers',
+    kpiReq:'OMP requests recorded', kpiTok:'tokens (in+out)', kpiCash:'CASH cost', kpiShadow:'shadow cost (subscriptions)', kpiBal:'est. DeepSeek balance', working:'working', ofAgents:'of {n} agents shown', allSafe:'No active alerts. All clear.', ack:'Handled', snooze:'Snooze', since:'Since', agentW:'agent', colRun:'In progress', colWait:'Waiting for Rizal', colDone:'Done', colFail:'Failed',
     mModel:'Model', mProvider:'Provider', mReq:'Requests', mTokIn:'Tokens in', mCost:'Cost', mClass:'Class', mShare:'Share', mFailed:'failed', mOut:'out', mCache:'cache', mCash:'cash', mShadow:'shadow', modelsEmpty:'No model data yet — OMP stats not read.', modelsNote:'CASH class = real money out (DeepSeek API & paid gateway models). SHADOW = API-equivalent cost of subscription providers, not a new bill (OpenCode Go counts as shadow — a metered limit on the flat $10/mo plan). FREE = $0 models. Sorted by cost, descending.',
-    clsTunai:'CASH', clsBayangan:'SHADOW', clsGratis:'FREE', tabSummary:'Summary', tabTasks:'Tasks', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sessions & Files', toastAck:'✅ Alert marked handled — saved, it will not reappear.', toastSnooze:'⏰ Alert snoozed for {h} h — saved.', toastFail:'❌ Alert action failed to send — check the HQ server connection.', updatedAgo:'updated {n}s ago', simPauseT:'Pause / resume animation', simOrbitT:'Auto-orbit camera', simFollowT:'Camera follows the selected agent', pickAgentFirst:'Select an agent first (click its figure), then enable Follow 🎯', raw:'VIEW RAW' },
-  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'点击代理查看详情 · 拖动平移 · 滚动缩放', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器',
-    kpiReq:'已记录的 OMP 请求', kpiTok:'令牌（入+出）', kpiCash:'现金成本', kpiShadow:'影子成本（订阅）', kpiBal:'DeepSeek 余额估算', working:'工作中', ofAgents:'共显示 {n} 个代理', allSafe:'没有活动警报，一切正常。', ack:'✅ 已处理', snooze:'⏰ 推迟', since:'自', agentW:'代理', colRun:'🏃 进行中', colWait:'✋ 等待 Rizal', colDone:'✅ 已完成', colFail:'❌ 失败',
+    clsTunai:'CASH', clsBayangan:'SHADOW', clsGratis:'FREE', tabSummary:'Summary', tabTasks:'Tasks', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sessions & Files', toastAck:'Alert marked handled — saved, it will not reappear.', toastSnooze:'Alert snoozed for {h} h — saved.', toastFail:'Alert action failed to send — check the HQ server connection.', updatedAgo:'updated {n}s ago', simPauseT:'Pause / resume animation', simOrbitT:'Auto-orbit camera', simFollowT:'Camera follows the selected agent', pickAgentFirst:'Select an agent first (click its figure), then enable Follow 🎯', raw:'VIEW RAW' },
+  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'拖动平移 · 滚动缩放 · 点击代理查看详情', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器',
+    kpiReq:'已记录的 OMP 请求', kpiTok:'令牌（入+出）', kpiCash:'现金成本', kpiShadow:'影子成本（订阅）', kpiBal:'DeepSeek 余额估算', working:'工作中', ofAgents:'共显示 {n} 个代理', allSafe:'没有活动警报，一切正常。', ack:'已处理', snooze:'推迟', since:'自', agentW:'代理', colRun:'进行中', colWait:'等待 Rizal', colDone:'已完成', colFail:'失败',
     mModel:'模型', mProvider:'提供商', mReq:'请求', mTokIn:'输入令牌', mCost:'费用', mClass:'类别', mShare:'占比', mFailed:'失败', mOut:'输出', mCache:'缓存', mCash:'现金', mShadow:'影子', modelsEmpty:'暂无模型数据 — 尚未读取 OMP stats。', modelsNote:'现金类 = 真实支出（DeepSeek API 与付费网关模型）。影子类 = 订阅提供商的 API 等值费用，并非新账单（OpenCode Go 属于影子 — $10/月固定套餐的计量额度）。免费 = $0 模型。按费用从高到低排序。',
-    clsTunai:'现金', clsBayangan:'影子', clsGratis:'免费', tabSummary:'概要', tabTasks:'任务', tabLog:'日志', tabUsage:'用量', tabSessions:'会话与文件', toastAck:'✅ 警报已标记为已处理 — 已保存，不会再次出现。', toastSnooze:'⏰ 警报已推迟 {h} 小时 — 已保存。', toastFail:'❌ 警报操作发送失败 — 请检查与 HQ 服务器的连接。', updatedAgo:'{n} 秒前更新', simPauseT:'暂停 / 继续动画', simOrbitT:'相机自动环绕', simFollowT:'相机跟随所选代理', pickAgentFirst:'请先选择一个代理（点击其形象），再开启跟随 🎯', raw:'查看原文' },
+    clsTunai:'现金', clsBayangan:'影子', clsGratis:'免费', tabSummary:'概要', tabTasks:'任务', tabLog:'日志', tabUsage:'用量', tabSessions:'会话与文件', toastAck:'警报已标记为已处理 — 已保存，不会再次出现。', toastSnooze:'警报已推迟 {h} 小时 — 已保存。', toastFail:'警报操作发送失败 — 请检查与 HQ 服务器的连接。', updatedAgo:'{n} 秒前更新', simPauseT:'暂停 / 继续动画', simOrbitT:'相机自动环绕', simFollowT:'相机跟随所选代理', pickAgentFirst:'请先选择一个代理（点击其形象），再开启跟随 🎯', raw:'查看原文' },
 };
 const STATUS_I18N = {
   id: { bekerja:'Bekerja', berpikir:'Berpikir', 'menunggu-rizal':'Menunggu Rizal', santai:'Santai', offline:'Offline', error:'Error' },
@@ -315,18 +315,28 @@ function applyLang() {
   if (state.snap) renderAll(state.snap);
 }
 
-// ---------- siklus render ----------
+// ---------- siklus render: hanya seksi yang datanya berubah yang digambar ulang ----------
+const _sig = {};
+function changed(key, str) { if (_sig[key] === str) return false; _sig[key] = str; return true; }
 function renderAll(s) {
-  $('#clock').textContent = 'Diperbarui ' + new Date(s.generated_at).toLocaleString(LOC()) + ' WIB · ' + s.agents.filter(a => a.status === 'bekerja').length + ' agent bekerja';
-  renderKpi(s); renderAlerts(s); renderQuotas(s); renderEnv(s); renderTasks(s); renderEvents(s); render2d(s);
-  if (view.open === 'board') renderBoard(s);
-  if (view.open === 'fac') renderFac(s);
-  if (view.open === 'models') renderModels(s);
+  const ck = $('#clock');
+  if (ck) ck.textContent = 'Diperbarui ' + new Date(s.generated_at).toLocaleTimeString(LOC()) + ' WIB · ' + s.agents.filter(a => a.status === 'bekerja').length + ' agent bekerja';
+  const J = JSON.stringify;
+  const names = J(s.agents.map(a => a.id + a.name));
+  if (changed('kpi', LANG + J(s.total_usage) + '|' + s.deepseek_balance_est + '|' + s.agents.length + '|' + s.agents.filter(a => a.status === 'bekerja').length)) renderKpi(s);
+  if (changed('alerts', LANG + J(s.alerts) + names)) renderAlerts(s);
+  if (changed('quotas', LANG + J(s.quotas) + J(s.fallback))) renderQuotas(s);
+  if (changed('env', J(s.env))) renderEnv(s);
+  if (changed('tasks', LANG + J(s.tasks))) renderTasks(s);
+  if (changed('events', LANG + state.raw + J(s.events))) renderEvents(s);
+  if (state.mode2d && changed('2d', LANG + J(s.agents))) render2d(s);
+  if (view.open === 'board' && changed('board', LANG + J(s.tasks) + names)) renderBoard(s);
+  if (view.open === 'fac' && changed('fac', LANG + J(s.env) + J(s.quotas) + J(s.fallback) + s.agents.length)) renderFac(s);
+  if (view.open === 'models' && changed('models', LANG + J(s.models) + J(s.quotas))) renderModels(s);
   if (state.office && !state.mode2d) state.office.update(s.agents);
-  if (state.selected) renderDrawer();
+  if (state.selected && changed('drawer', LANG + state.tab + state.selected + J(s.agents) + J(s.tasks) + J(s.events) + J(s.alerts))) renderDrawer();
   if (_wantMeet && state.office) { _wantMeet = false; state.office.callMeeting(); }
   state.office?.setPlumbob?.(state.selected || null);
-  if (followOn) state.office?.setFollow?.(state.selected || null);
 }
 
 async function refresh() {
@@ -340,11 +350,11 @@ async function refresh() {
 function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${location.host}/ws`);
-  ws.onopen = () => { $('#wsState').textContent = '🟢 live (WebSocket)'; };
+  ws.onopen = () => { $('#wsState').innerHTML = '<i class="wsdot on"></i>Live · WebSocket'; };
   ws.onmessage = ev => {
     try { state.snap = JSON.parse(ev.data); renderAll(state.snap); } catch { /* abaikan */ }
   };
-  ws.onclose = () => { $('#wsState').textContent = '🟡 polling (WS putus)'; setTimeout(connectWs, 5000); };
+  ws.onclose = () => { $('#wsState').innerHTML = '<i class="wsdot warn"></i>Polling (WS putus)'; setTimeout(connectWs, 5000); };
   ws.onerror = () => ws.close();
 }
 
@@ -356,11 +366,11 @@ try {
       const tip = $('#bubbleTip');
       const mcp = agentById('mcp');
       const texts = {
-        pingpong: '🏓 Meja tenis meja di ruang santai — agen terdekat sampai melompat kegirangan.',
-        sofa: '🛋️ Ruang santai — sofa, beanbag, dan meja kopi untuk agen melepas lelah.',
-        chart: '📊 Layar meeting — grafik aktivitas kantor. Kamera kufokuskan ke ruang meeting.',
-        rack: `🗄️ Rak server MCP — ${mcp ? esc(mcp.activity) : 'server MCP berjalan.'}`,
-        entrance: '🏢 RIZAL AGENT HQ — markas semua agen Rizal. Kamera kembali ke seluruh kantor.',
+        pingpong: 'Meja tenis meja di ruang santai — agen terdekat sampai melompat kegirangan.',
+        sofa: 'Ruang santai — sofa, beanbag, dan meja kopi untuk agen melepas lelah.',
+        chart: 'Layar meeting — grafik aktivitas kantor. Kamera kufokuskan ke ruang meeting.',
+        rack: `Rak server MCP — ${mcp ? esc(mcp.activity) : 'server MCP berjalan.'}`,
+        entrance: 'RIZAL AGENT HQ — markas semua agen Rizal. Kamera kembali ke seluruh kantor.',
       };
       if (hid === 'chart') state.office?.preset('meeting', state.snap?.agents);
       if (hid === 'rack') state.office?.preset('mcp', state.snap?.agents);
@@ -373,12 +383,12 @@ try {
       clearTimeout(state._tipT);
       state._tipT = setTimeout(() => { tip.style.display = 'none'; }, 3000);
     },
-    onMeetingChange: on => { $('#navMeet').classList.toggle('on', on); $('#navMeet').textContent = on ? '📣 Meeting berjalan… (klik untuk bubarkan)' : '📣 Panggil meeting'; },
+    onMeetingChange: on => { const b = $('#navMeet'); b.classList.toggle('on', on); b.innerHTML = '<svg class="ic"><use href="#i-mega"/></svg>' + (on ? 'Meeting berjalan… (klik untuk bubarkan)' : 'Panggil meeting'); },
     onHover: (id, ev) => {
       const tip = $('#bubbleTip');
       const a = agentById(id);
       if (!a) { tip.style.display = 'none'; return; }
-      tip.innerHTML = `<b>${esc(a.emoji)} ${esc(a.name)}</b> · ${STATUS_LABEL[a.status] || esc(a.status)}<br>${esc(a.activity)}`;
+      tip.innerHTML = `<b>${esc(a.name)}</b> · ${STATUS_LABEL[a.status] || esc(a.status)}<br>${esc(a.activity)}`;
       tip.style.display = 'block';
       const st = $('#stage').getBoundingClientRect();
       tip.style.left = Math.min(ev.clientX - st.left + 14, st.width - 315) + 'px';
@@ -389,7 +399,7 @@ try {
   // WebGL/CDN gagal -> mode 2D otomatis.
   state.mode2d = true;
   $('#grid2d').style.display = 'grid';
-  $('#btn2d').textContent = '🗂️ Mode 2D (aktif)';
+  $('#btn2d').innerHTML = '<svg class="ic"><use href="#i-layout"/></svg><span>Mode 2D (aktif)</span>';
 }
 document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => state.office?.preset(b.dataset.cam, state.snap?.agents));
 document.querySelectorAll('[data-zone]').forEach(b => b.onclick = () => {
@@ -402,7 +412,9 @@ $('#btn2d').onclick = () => {
   const cv = $('#stage canvas');
   if (cv) cv.style.display = state.mode2d ? 'none' : 'block';
   const lb = $('#labels'); if (lb) lb.style.display = state.mode2d ? 'none' : 'block';
-  $('#btn2d').textContent = state.mode2d ? '🏢 Mode 3D' : '🗂️ Mode 2D';
+  $('#btn2d').innerHTML = state.mode2d
+    ? '<svg class="ic"><use href="#i-box"/></svg><span>Mode 3D</span>'
+    : '<svg class="ic"><use href="#i-layout"/></svg><span>Mode 2D</span>';
   if (state.snap) renderAll(state.snap);
 };
 $('#btnPanel').onclick = () => {
@@ -459,36 +471,16 @@ $('#drawerClose').onclick = closeDrawer;
 $('#rawToggle').onchange = e => { state.raw = e.target.checked; if (state.snap) { renderEvents(state.snap); if (state.selected) renderDrawer(); } };
 
 
-// ---------- kendali ala The Sims ----------
-let followOn = false;
-let ambIdx = 0;
-const AMB_CYCLE = [['day', '🌞'], ['sunset', '🌅'], ['night', '🌙']];
+// ---------- kontrol panggung: jeda animasi & reset kamera ----------
+const iconSvg = n => `<svg class="ic"><use href="#i-${n}"/></svg>`;
+let simPausedUi = false;
 $('#simPause').onclick = () => {
-  const nowPaused = $('#simPause').textContent !== '▶️';
-  state.office?.setPaused(nowPaused);
-  $('#simPause').textContent = nowPaused ? '▶️' : '⏸️';
-  $('#simPause').classList.toggle('on', nowPaused);
+  simPausedUi = !simPausedUi;
+  state.office?.setPaused(simPausedUi);
+  $('#simPause').innerHTML = iconSvg(simPausedUi ? 'play' : 'pause');
+  $('#simPause').classList.toggle('on', simPausedUi);
 };
-document.querySelectorAll('#simSpeed button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#simSpeed button').forEach(x => x.classList.toggle('on', x === b));
-  state.office?.setSpeed(+b.dataset.v);
-});
-$('#simAmb').onclick = () => {
-  ambIdx = (ambIdx + 1) % AMB_CYCLE.length;
-  state.office?.setAmbience(AMB_CYCLE[ambIdx][0]);
-  $('#simAmb').textContent = AMB_CYCLE[ambIdx][1];
-};
-$('#simOrbit').onclick = () => {
-  const on = !$('#simOrbit').classList.contains('on');
-  $('#simOrbit').classList.toggle('on', on);
-  state.office?.setOrbit(on);
-};
-$('#simFollow').onclick = () => {
-  if (!state.selected) { toast(t('pickAgentFirst')); return; }
-  followOn = !followOn;
-  $('#simFollow').classList.toggle('on', followOn);
-  state.office?.setFollow(followOn ? state.selected : null);
-};
+$('#camReset').onclick = () => state.office?.resetCamera?.();
 document.querySelectorAll('.langsw button').forEach(b => b.onclick = () => {
   LANG = b.dataset.lang;
   localStorage.setItem('hq-lang', LANG);
