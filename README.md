@@ -128,6 +128,8 @@ Spesifikasi produk lengkap: **[PRD.md](PRD.md)**.
 | M3 | Kantor 3D + view detail 5 tab | ✅ selesai, terverifikasi tangkapan layar data asli |
 | M4 | Alert Center + jembatan WhatsApp | ✅ Alert Center live; jembatan Kritis jalan tiap ±15 mnt (saluran WhatsApp aktif begitu akun tertaut) |
 | M5 | Rilis GitHub + pasang systemd + laporan harian | ✅ live di WSL (port 8900) + repo publik; panel kuota menampilkan rantai fallback OpenCode Go → DeepSeek |
+| M6 | Redesign kantor virtual isometrik terang | ✅ kamera ortografik isometrik, ruangan kaca berperabot per tim, lingkungan hidup (jalan, zebra cross, mobil berjalan, pohon), chip nama melayang, UI terang pill + pencarian agen |
+| M7 | Fitur kantor virtual lengkap | ✅ **Panggil Meeting** (agen utama berjalan ke ruang meeting ±30 dtk), **Papan Tugas** kanban 4 fase, **Fasilitas** (host/Docker/Tailscale/kuota jebol/fallback), interior bisa diklik (sofa, tenis meja, rak server, layar meeting, papan pintu), label versi v2.1 |
 
 ## 🤝 Berkontribusi
 

@@ -55,9 +55,9 @@ function renderQuotas(s) {
   const rows = s.quotas.filter(q => q.percent != null);
   if (!rows.length) { $('#quotas').innerHTML = '<p class="mut small">Belum terbaca.</p>'; return; }
   const fb = s.fallback || {};
-  const fbHtml = fb.label ? `<div class="qrow" style="border:1px solid ${fb.active ? '#e5484d' : '#3a4152'};border-radius:8px;padding:6px 8px;margin-top:8px">
+  const fbHtml = fb.label ? `<div class="qrow" style="border:1px solid ${fb.active ? '#e5484d' : '#c9d2dd'};border-radius:8px;padding:6px 8px;margin-top:8px">
       <div class="top"><span>⛑️ Fallback utama · ${esc(fb.label)}</span><b>${fb.active ? 'AKTIF' : 'Siaga'}</b></div>
-      <div class="mut small">${esc(fb.model || '')}${fb.reserve_label ? `<br>Cadangan terakhir: ${esc(fb.reserve_label)}${fb.reserve_balance_usd != null ? ' · saldo ±' + usd(fb.reserve_balance_usd) : ''}` : ''}<br>${esc(fb.note || '')}</div>
+      <div class="mut small">${esc(fb.model || '')}${fb.reserve_label ? `<br>Cadangan terakhir: ${esc(fb.reserve_label)}${fb.reserve_balance_usd != null ? ' · saldo ±' + fmtUsd(fb.reserve_balance_usd) : ''}` : ''}<br>${esc(fb.note || '')}</div>
     </div>` : '';
   $('#quotas').innerHTML = rows.map(q => `
     <div class="qrow">
@@ -172,12 +172,63 @@ function renderDrawer() {
   document.querySelectorAll('#drawerBody [data-tab]').forEach(b => b.onclick = () => { state.tab = b.dataset.tab; renderDrawer(); });
 }
 
+// ---------- overlay: papan tugas & fasilitas ----------
+const view = { open: null };
+function openView(name) {
+  view.open = name;
+  $('#boardOverlay').classList.toggle('open', name === 'board');
+  $('#facOverlay').classList.toggle('open', name === 'fac');
+  if (state.snap) { if (name === 'board') renderBoard(state.snap); if (name === 'fac') renderFac(state.snap); }
+}
+function renderBoard(s) {
+  const cols = [
+    ['berjalan', '🏃 Sedang berjalan'], ['menunggu-rizal', '✋ Menunggu Rizal'],
+    ['selesai', '✅ Selesai'], ['gagal', '❌ Gagal'],
+  ];
+  const inCol = (t, k) => k === 'berjalan' ? (t.phase === 'berjalan' || t.phase === 'berpikir') : t.phase === k;
+  $('#boardCols').innerHTML = cols.map(([k, label]) => {
+    const items = s.tasks.filter(t => inCol(t, k));
+    return `<div class="bcol"><h3>${label}<span>${items.length}</span></h3>` +
+      (items.length ? items.map(t => `
+        <div class="bcard"><b>${esc(t.title)}</b>
+          <div class="mut small">${esc(agentById(t.agent_id)?.name || t.agent_id)}${t.started_at ? ' · ' + fmtTime(t.started_at) + ' WIB' : ''}</div>
+          <div class="small">${esc(t.detail)}</div>
+          ${t.steps?.length ? `<ul class="steps">${t.steps.map(st => `<li class="${st.done ? 'done' : ''}">${st.done ? '✅' : '⏳'} ${esc(st.label)}</li>`).join('')}</ul>` : ''}
+        </div>`).join('') : '<p class="mut small">Tidak ada tugas di fase ini.</p>') + '</div>';
+  }).join('');
+}
+function renderFac(s) {
+  const e = s.env;
+  const bar = (label, pct) => `<div class="small">${label} — ${pct}%</div><div class="fbar"><i style="width:${Math.min(pct, 100)}%"></i></div>`;
+  const jebol = s.quotas.filter(q => q.percent != null && q.percent >= 100);
+  $('#facBody').innerHTML = `
+    <div class="fcard"><h3>🖥️ Mesin Host — ${esc(e.hostname)}</h3>
+      ${bar('CPU', e.cpu_percent)}${bar('RAM', e.mem_percent)}${bar('Disk', e.disk_percent)}
+      <div class="small mut">⏱️ Uptime ${Math.floor(e.uptime_sec / 3600)} jam · 📦 ${e.process_total} proses berjalan</div></div>
+    <div class="fcard"><h3>🐳 Docker</h3>
+      ${e.docker_up.length ? e.docker_up.map(d => `<span class="fchip">${esc(d)}</span>`).join('') : '<span class="mut small">Tidak ada kontainer jalan.</span>'}
+      ${e.docker_down.length ? '<div style="margin-top:6px">' + e.docker_down.map(d => `<span class="fchip down">${esc(d)} (berhenti)</span>`).join('') + '</div>' : ''}</div>
+    <div class="fcard"><h3>🌐 Koneksi Muse (Tailscale)</h3>
+      <div class="small">${e.tailscale_muse_online == null ? 'Status tidak terbaca.' : e.tailscale_muse_online ? '🟢 Muse terhubung ke tailnet — jalur SSH WSL aktif.' : '🔴 Muse tidak terlihat di tailnet.'}</div>
+      <div class="small mut" style="margin-top:6px">Layanan HQ: http://localhost:8900 · data diperbarui ${new Date(s.generated_at).toLocaleTimeString('id-ID')} WIB</div></div>
+    <div class="fcard"><h3>🚨 Kuota jebol</h3>
+      ${jebol.length ? jebol.map(q => `<span class="fchip hot">${esc(q.provider)} · ${esc(q.label)} ${q.percent}%</span>`).join('') : '<span class="mut small">Semua kuota aman.</span>'}
+      ${s.fallback?.label ? `<div class="small" style="margin-top:7px">⛑️ Fallback utama: <b>${esc(s.fallback.label)}</b> — ${s.fallback.active ? 'AKTIF' : 'siaga'}${s.fallback.reserve_balance_usd != null ? ` · cadangan DeepSeek langsung ±${fmtUsd(s.fallback.reserve_balance_usd)}` : ''}</div>` : ''}</div>
+    <div class="fcard"><h3>📝 Commit terbaru di mesin</h3>
+      ${e.recent_commits.length ? e.recent_commits.map(c => `<div class="evt" style="margin:5px 0">${esc(c)}</div>`).join('') : '<p class="mut small">Tidak terbaca.</p>'}</div>
+    <div class="fcard"><h3>🏢 Tentang kantor ini</h3>
+      <div class="small">Rizal Agent HQ v2.1 — Rust (Axum + WebSocket + SQLite) satu binary + Three.js. ${s.agents.length} agen tampil, ${s.agents.filter(x => x.status === 'bekerja').length} sedang bekerja. Klik interior kantor (sofa, meja tenis, rak server, layar meeting) untuk interaksi.</div></div>`;
+}
+
 // ---------- siklus render ----------
 function renderAll(s) {
   $('#clock').textContent = 'Diperbarui ' + new Date(s.generated_at).toLocaleString('id-ID') + ' WIB · ' + s.agents.filter(a => a.status === 'bekerja').length + ' agent bekerja';
   renderKpi(s); renderAlerts(s); renderQuotas(s); renderEnv(s); renderTasks(s); renderEvents(s); render2d(s);
+  if (view.open === 'board') renderBoard(s);
+  if (view.open === 'fac') renderFac(s);
   if (state.office && !state.mode2d) state.office.update(s.agents);
   if (state.selected) renderDrawer();
+  if (_wantMeet && state.office) { _wantMeet = false; state.office.callMeeting(); }
 }
 
 async function refresh() {
@@ -203,6 +254,28 @@ function connectWs() {
 try {
   state.office = initOffice($('#stage'), {
     onSelect: id => selectAgent(id),
+    onInteract: (hid) => {
+      const tip = $('#bubbleTip');
+      const mcp = agentById('mcp');
+      const texts = {
+        pingpong: '🏓 Meja tenis meja di ruang santai — agen terdekat sampai melompat kegirangan.',
+        sofa: '🛋️ Ruang santai — sofa, beanbag, dan meja kopi untuk agen melepas lelah.',
+        chart: '📊 Layar meeting — grafik aktivitas kantor. Kamera kufokuskan ke ruang meeting.',
+        rack: `🗄️ Rak server MCP — ${mcp ? esc(mcp.activity) : 'server MCP berjalan.'}`,
+        entrance: '🏢 RIZAL AGENT HQ — markas semua agen Rizal. Kamera kembali ke seluruh kantor.',
+      };
+      if (hid === 'chart') state.office?.preset('meeting', state.snap?.agents);
+      if (hid === 'rack') state.office?.preset('mcp', state.snap?.agents);
+      if (hid === 'entrance') state.office?.preset('semua', state.snap?.agents);
+      tip.innerHTML = texts[hid] || '';
+      const st = $('#stage').getBoundingClientRect();
+      tip.style.left = Math.max(10, st.width / 2 - 160) + 'px';
+      tip.style.top = '54px';
+      tip.style.display = 'block';
+      clearTimeout(state._tipT);
+      state._tipT = setTimeout(() => { tip.style.display = 'none'; }, 3000);
+    },
+    onMeetingChange: on => { $('#navMeet').classList.toggle('on', on); $('#navMeet').textContent = on ? '📣 Meeting berjalan… (klik untuk bubarkan)' : '📣 Panggil meeting'; },
     onHover: (id, ev) => {
       const tip = $('#bubbleTip');
       const a = agentById(id);
@@ -221,18 +294,47 @@ try {
   $('#btn2d').textContent = '🗂️ Mode 2D (aktif)';
 }
 document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => state.office?.preset(b.dataset.cam, state.snap?.agents));
+document.querySelectorAll('[data-zone]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-zone]').forEach(x => x.classList.toggle('on', x.dataset.zone === b.dataset.zone));
+  state.office?.preset(b.dataset.zone, state.snap?.agents);
+});
 $('#btn2d').onclick = () => {
   state.mode2d = !state.mode2d;
   $('#grid2d').style.display = state.mode2d ? 'grid' : 'none';
   const cv = $('#stage canvas');
   if (cv) cv.style.display = state.mode2d ? 'none' : 'block';
+  const lb = $('#labels'); if (lb) lb.style.display = state.mode2d ? 'none' : 'block';
   $('#btn2d').textContent = state.mode2d ? '🏢 Mode 3D' : '🗂️ Mode 2D';
   if (state.snap) renderAll(state.snap);
 };
-$('#alertBadge').onclick = () => document.querySelector('aside').scrollTo({ top: 0, behavior: 'smooth' });
+$('#btnPanel').onclick = () => $('#panel').classList.toggle('show');
+$('#searchBox').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  if (q.length < 2 || !state.snap) return;
+  const hit = state.snap.agents.find(a => a.name.toLowerCase().includes(q));
+  if (hit && state.office && !state.mode2d) state.office.focusAgent(hit.id);
+});
+$('#searchBox').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !state.snap) return;
+  const q = e.target.value.trim().toLowerCase();
+  const hit = state.snap.agents.find(a => a.name.toLowerCase().includes(q));
+  if (hit) selectAgent(hit.id);
+});
+$('#alertBadge').onclick = () => { $('#panel').classList.add('show'); $('#panel').scrollTo({ top: 0, behavior: 'smooth' }); };
+$('#navMeet').onclick = () => { state.office?.callMeeting(); };
+$('#navBoard').onclick = () => openView(view.open === 'board' ? null : 'board');
+$('#navFac').onclick = () => openView(view.open === 'fac' ? null : 'fac');
+document.querySelectorAll('[data-closeov]').forEach(b => b.onclick = () => openView(null));
+let _wantMeet = false;
+const _qp = new URLSearchParams(location.search);
+if (_qp.get('view') === 'board') openView('board');
+if (_qp.get('view') === 'fasilitas') openView('fac');
+if (_qp.get('meet')) _wantMeet = true;
+if (_qp.get('debug')) setInterval(() => { try { document.title = JSON.stringify(state.office?.debug?.() || {}); } catch {} }, 400);
 $('#drawerClose').onclick = closeDrawer;
 $('#rawToggle').onchange = e => { state.raw = e.target.checked; if (state.snap) { renderEvents(state.snap); if (state.selected) renderDrawer(); } };
 
+window.HQ = state; // pegangan debug (konsol/puppeteer)
 refresh();
 connectWs();
 setInterval(() => { if (!state.snap || Date.now() - state.snap.generated_at > 20000) refresh(); }, 10000);
