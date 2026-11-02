@@ -272,21 +272,30 @@ pub struct OmpCache {
     pub at: i64,
     pub stats: Option<omp::OmpStats>,
     pub quotas: Vec<Quota>,
+    pub quotas_at: i64,
 }
 
 pub fn collect_omp(cache: &mut OmpCache, force: bool) {
+    // TTL terpisah demi realtime: stats per model diperbarui tiap 60 detik
+    // (cukup ringan), kuota `omp usage` yang lambat tetap 5 menit.
     let now = now_ms();
-    if !force && cache.stats.is_some() && now - cache.at < 5 * 60 * 1000 {
+    let stats_fresh = cache.stats.is_some() && now - cache.at < 60_000;
+    let quotas_fresh = !cache.quotas.is_empty() && now - cache.quotas_at < 5 * 60 * 1000;
+    if !force && stats_fresh && quotas_fresh {
         return;
     }
-    let stats = run_timeout("omp", &["stats", "--json"], 45000).and_then(|t| omp::parse_stats(&t));
-    let quotas = run_timeout("omp", &["usage"], 45000).map(|t| omp::parse_usage(&t)).unwrap_or_default();
-    if stats.is_some() {
-        cache.stats = stats;
-        if !quotas.is_empty() {
-            cache.quotas = quotas;
+    if force || !stats_fresh {
+        if let Some(st) = run_timeout("omp", &["stats", "--json"], 45000).and_then(|t| omp::parse_stats(&t)) {
+            cache.stats = Some(st);
+            cache.at = now;
         }
-        cache.at = now;
+    }
+    if force || !quotas_fresh {
+        let q = run_timeout("omp", &["usage"], 45000).map(|t| omp::parse_usage(&t)).unwrap_or_default();
+        if !q.is_empty() {
+            cache.quotas = q;
+            cache.quotas_at = now;
+        }
     }
 }
 
@@ -315,6 +324,9 @@ pub struct CollectState {
     pub omp_cache: OmpCache,
     pub cpu_state: Option<(u64, u64)>,
     pub heartbeat_dir: String,
+    /// Cache probe lambat (status Tailscale + commit git), TTL 30 detik,
+    /// supaya siklus cepat 6 detik tidak memanggil perintah eksternal terus.
+    pub probe_cache: (i64, Option<bool>, Vec<String>),
 }
 
 /// Keluaran satu sumber. Kolom ekstra (kuota/total/saldo) hanya diisi sumber OMP.
@@ -384,13 +396,25 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
     let stats = state.omp_cache.stats.clone().unwrap_or_default();
     let mut out = SourceOut::default();
 
-    let sessions = sessions::collect_sessions(now, 24 * 3600 * 1000, 40);
+    let mut sessions = sessions::collect_sessions(now, 24 * 3600 * 1000, 40);
+    sessions.sort_by(|a, b| b.last_ms.cmp(&a.last_ms));
+    // Sesi internal HQ sendiri (panggilan perapi LLM) bukan pekerjaan Rizal —
+    // jangan tampilkan sebagai agen/tugas.
+    sessions.retain(|s| !s.first_prompt.starts_with("Ringkas judul sesi kerja agent"));
     let recent = |s: &sessions::SessionInfo, mins: i64| now - s.last_ms < mins * 60 * 1000;
     let is_worker = |s: &sessions::SessionInfo| s.agent_type == "subagent" || s.is_subagent;
     let lead_session = sessions.iter().find(|s| !is_worker(s) && recent(s, 120));
     let worker_sessions: Vec<&sessions::SessionInfo> = sessions
         .iter()
         .filter(|s| is_worker(s) && recent(s, 360))
+        .collect();
+    // Sesi UTAMA lain yang hidup paralel (chat/tugas lain yang berjalan
+    // bersamaan) — ditampilkan sebagai penghuni sendiri agar kantor
+    // mencerminkan pekerjaan nyata yang sedang berjalan bersamaan.
+    let lead_id = lead_session.map(|s| s.id.clone());
+    let extra_mains: Vec<&sessions::SessionInfo> = sessions
+        .iter()
+        .filter(|s| !is_worker(s) && recent(s, 30) && Some(&s.id) != lead_id.as_ref())
         .collect();
 
     let omp_procs = pr.group(ProcKind::Omp);
@@ -462,8 +486,51 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
     });
 
     // Worker per sesi (maks 7 sendiri; sisanya agregat — bawaan Bagian 1).
+    // Figur sesi paralel (maks 12 figur worker+sesi gabungan).
+    let mut fig_used = 0usize;
+    for ms in extra_mains.iter().take(12) {
+        fig_used += 1;
+        let label = if ms.name.is_empty() { ms.project.clone() } else { ms.name.clone() };
+        let mname: String = format!("Sesi · {}", label).chars().take(30).collect();
+        let act = ms
+            .last_tools
+            .last()
+            .map(|t| hq_core::humanize::humanize_tool(&mname, &t.name, &t.intent, &t.target, &ms.project))
+            .unwrap_or_else(|| {
+                if ms.first_prompt.is_empty() {
+                    format!("{mname} bekerja di {}", ms.project)
+                } else {
+                    format!("{mname} di {}: {}", ms.project, ms.first_prompt.chars().take(80).collect::<String>())
+                }
+            });
+        out.agents.push(Agent {
+            id: format!("omp-s-{}", &ms.id[..ms.id.len().min(8)]),
+            name: mname,
+            emoji: "🤖".into(),
+            role: format!("Sesi OMP paralel di {}", ms.project),
+            kind: AgentKind::Worker,
+            parent: Some("omp".into()),
+            status: if ms.ended {
+                Status::Santai
+            } else if recent(ms, 5) {
+                Status::Bekerja
+            } else if recent(ms, 30) {
+                Status::Berpikir
+            } else {
+                Status::Santai
+            },
+            activity: act,
+            provider: Some(ms.model.split('/').next().unwrap_or("").to_string()),
+            model: Some(ms.model.clone()),
+            usage: ms.usage.clone(),
+            processes: if ms.ended { 0 } else { 1 },
+            cpu_percent: 0.0,
+            active_alerts: 0,
+        });
+    }
+    let wslots = 12usize.saturating_sub(fig_used);
     if !worker_sessions.is_empty() {
-        for ws in worker_sessions.iter().take(7) {
+        for ws in worker_sessions.iter().take(wslots) {
             let wid = format!("omp-w-{}", &ws.id[..ws.id.len().min(8)]);
             let wname = if ws.name.is_empty() {
                 format!("Worker · {}", hq_core::humanize::friendly_model(&ws.model))
@@ -506,8 +573,8 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
                 active_alerts: 0,
             });
         }
-        if worker_sessions.len() > 7 {
-            let rest = &worker_sessions[7..];
+        if worker_sessions.len() > wslots {
+            let rest = &worker_sessions[wslots..];
             let mut agg = Usage::default();
             for ws in rest {
                 agg.requests += ws.usage.requests;
@@ -601,6 +668,7 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
             } else {
                 TaskPhase::Selesai
             },
+            summary: None,
             steps,
             started_at: Some(s.started_ms),
             ended_at: if s.ended { Some(s.last_ms) } else { None },
@@ -634,6 +702,7 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
             title: format!("Sesi kerja \"{name}\" sedang berjalan"),
             detail,
             phase: TaskPhase::Berjalan,
+            summary: None,
             steps: vec![],
             started_at: Some(*created),
             ended_at: None,
@@ -688,9 +757,8 @@ fn src_cursor(_state: &mut CollectState, pr: &Probes) -> SourceOut {
 fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
     let mut out = SourceOut::default();
     let now = pr.now;
-    let mut status = Status::Offline;
-    let mut activity = "Muse belum melapor".to_string();
-    let mut processes = 0u32;
+    // Ambil heartbeat TERBARU dari semua berkas (bukan yang terakhir terbaca).
+    let mut newest: Option<(i64, String)> = None;
     if let Ok(rd) = std::fs::read_dir(&state.heartbeat_dir) {
         for e in rd.flatten() {
             if e.path().extension().map(|x| x == "json").unwrap_or(false) {
@@ -698,24 +766,32 @@ fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
                         let at = v.get("at").and_then(|x| x.as_i64()).unwrap_or(0);
                         let task = v.get("task").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                        if now - at < 10 * 60 * 1000 {
-                            status = Status::Bekerja;
-                            activity = redact(&task);
-                            processes = 1;
+                        if newest.as_ref().map(|(a, _)| at > *a).unwrap_or(true) {
+                            newest = Some((at, task));
                         }
                     }
                 }
             }
         }
     }
-    if status == Status::Offline {
-        if pr.muse_online == Some(true) {
-            status = Status::Santai;
-            activity = "Muse terhubung lewat Tailscale, belum ada laporan tugas baru".into();
-        } else if pr.muse_online == Some(false) {
-            activity = "Muse tidak terhubung (peer Tailscale offline)".into();
+    let (status, activity, processes) = match newest {
+        Some((at, task)) if now - at < 15 * 60 * 1000 => {
+            (Status::Bekerja, redact(&task), 1)
         }
-    }
+        Some((at, task)) if now - at < 2 * 3600 * 1000 => {
+            let menit = ((now - at) / 60000).max(1);
+            (Status::Berpikir, format!("Terakhir melapor {menit} menit lalu: {}", redact(&task)), 1)
+        }
+        _ => {
+            if pr.muse_online == Some(true) {
+                (Status::Santai, "Muse terhubung lewat Tailscale, belum ada laporan tugas baru".to_string(), 0)
+            } else if pr.muse_online == Some(false) {
+                (Status::Offline, "Muse tidak terhubung (peer Tailscale offline)".to_string(), 0)
+            } else {
+                (Status::Offline, "Muse belum melapor".to_string(), 0)
+            }
+        }
+    };
     out.agents.push(Agent {
         id: "Muse".into(),
         name: "Muse".into(),
@@ -798,13 +874,20 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
     let sys = collect_system(&mut cpu);
     state.cpu_state = cpu;
     let (docker_up, docker_down) = collect_docker();
-    let muse_online = run_timeout("tailscale", &["status", "--json"], 5000)
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .and_then(|j| {
-            j.get("Peer")?.as_object()?.values().find(|p| {
-                p.get("HostName").and_then(|h| h.as_str()).map(|h| h.to_lowercase().contains("muse")).unwrap_or(false)
-            }).and_then(|p| p.get("Online").and_then(|o| o.as_bool()))
-        });
+    let (muse_online, commits) = if now - state.probe_cache.0 < 30_000 && state.probe_cache.0 > 0 {
+        (state.probe_cache.1, state.probe_cache.2.clone())
+    } else {
+        let mo = run_timeout("tailscale", &["status", "--json"], 5000)
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|j| {
+                j.get("Peer")?.as_object()?.values().find(|p| {
+                    p.get("HostName").and_then(|h| h.as_str()).map(|h| h.to_lowercase().contains("muse")).unwrap_or(false)
+                }).and_then(|p| p.get("Online").and_then(|o| o.as_bool()))
+            });
+        let cm = collect_git();
+        state.probe_cache = (now, mo, cm.clone());
+        (mo, cm)
+    };
     let pr = Probes {
         now,
         procs: collect_processes(),
@@ -812,7 +895,7 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
         tmux: collect_tmux(),
         docker_up,
         docker_down,
-        commits: collect_git(),
+        commits,
         muse_online,
     };
 
@@ -863,6 +946,28 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
             )
         },
     };
+    // Dashboard Model & Provider: rincian per model langsung dari byModel OMP.
+    if let Some(stats) = &state.omp_cache.stats {
+        let total: f64 = stats.by_model.iter().map(|m| m.usage.total_cost()).sum();
+        snap.models = stats
+            .by_model
+            .iter()
+            .map(|m| ModelStat {
+                provider: m.provider.clone(),
+                model: m.model.clone(),
+                friendly: hq_core::humanize::friendly_model(&format!("{}/{}", m.provider, m.model)),
+                usage: m.usage.clone(),
+                cost_class: if m.usage.cash_usd > 0.0 {
+                    "tunai".into()
+                } else if m.usage.shadow_usd > 0.0 {
+                    "bayangan".into()
+                } else {
+                    "gratis".into()
+                },
+                share_pct: if total > 0.0 { m.usage.total_cost() / total * 100.0 } else { 0.0 },
+            })
+            .collect();
+    }
     // Urutan tampil seragam: utama dulu (sesuai urutan registry), lalu worker, lalu mcp.
     snap.env = EnvInfo {
         hostname: pr.sys.hostname.clone(),

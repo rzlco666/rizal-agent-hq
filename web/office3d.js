@@ -189,7 +189,8 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xe9edf2);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xc9d4e2, 0.88));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xc9d4e2, 0.88);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 2.15);
   sun.position.set(20, 32, 14);
   sun.castShadow = true;
@@ -405,7 +406,12 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
       e.ring.material.color.setHex(STATUS_COLORS[a.status] ?? 0x9aa7ba);
       const dot = STATUS_CSS[a.status] || '#9aa7ba';
       const short = a.name.replace(/^Worker · /, '');
-      e.chip.innerHTML = `<i style="background:${dot}"></i>${a.emoji || ''} ${short}<small>${STATUS_LABEL[a.status] || a.status}</small>`;
+      const actTxt = (a.status === 'bekerja' || a.status === 'berpikir') && a.activity
+        ? a.activity.replace(/^[A-Za-z✨🤖🧠🖱️⌨️🧩🔌 ]+? (sedang|mulai|membuka|menjalankan|menulis|memperbaiki|meneliti|mengubah|mencari|membaca)/, (m, v) => v[0].toUpperCase() + v.slice(1))
+        : '';
+      const actShort = actTxt.length > 46 ? actTxt.slice(0, 46) + '…' : actTxt;
+      const actHtml = actShort ? `<small class="act">${actShort.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</small>` : '';
+      e.chip.innerHTML = `<i style="background:${dot}"></i>${a.emoji || ''} ${short}<small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
       e.chip.style.opacity = a.status === 'offline' ? 0.55 : 1;
     }
     for (const [id, e] of entries) {
@@ -442,7 +448,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
     for (const e of entries.values()) if (e.agent.kind === 'utama') { meeting.invited.add(e.agent.id); meeting.order.set(e.agent.id, i++); }
     if (!meeting.invited.size) return false;
     meeting.active = true;
-    meeting.until = clockT.getElapsedTime() + 30;
+    meeting.until = simT + 30;
     onMeetingChange && onMeetingChange(true);
     return true;
   }
@@ -470,7 +476,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
       const d = Math.hypot(e.group.position.x - x, e.group.position.z - z);
       if (d < bd) { bd = d; best = e; }
     }
-    if (best) best.jumpUntil = clockT.getElapsedTime() + 0.6;
+    if (best) best.jumpUntil = simT + 0.6;
   }
   renderer.domElement.addEventListener('pointerdown', ev => { downPos = [ev.clientX, ev.clientY]; });
   renderer.domElement.addEventListener('pointerup', ev => {
@@ -507,6 +513,26 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   const v3 = new THREE.Vector3();
   const clockT = new THREE.Clock();
   let lastT = 0, frames = 0, lastDt = 0;
+  // --- kendali ala The Sims ---
+  let simT = 0, speedMul = 1, simPaused = false, orbitOn = false, followId = null, plumbobId = null;
+  const plumbob = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.17),
+    new THREE.MeshStandardMaterial({ color: 0x2bff88, emissive: 0x12b76a, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.1 })
+  );
+  plumbob.visible = false;
+  scene.add(plumbob);
+  const AMBIENCES = {
+    day: { bg: 0xe9edf2, hemi: 0.88, sun: 2.15, sunColor: 0xffffff },
+    sunset: { bg: 0xf7ddba, hemi: 0.62, sun: 1.35, sunColor: 0xffb26b },
+    night: { bg: 0x232f4d, hemi: 0.34, sun: 0.5, sunColor: 0x9db8ff },
+  };
+  function setAmbience(name) {
+    const a = AMBIENCES[name] || AMBIENCES.day;
+    scene.background = new THREE.Color(a.bg);
+    hemi.intensity = a.hemi;
+    sun.intensity = a.sun;
+    sun.color.setHex(a.sunColor);
+  }
   function angLerp(cur, target, k) {
     let d = (target - cur) % (Math.PI * 2);
     if (d > Math.PI) d -= Math.PI * 2;
@@ -515,8 +541,22 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   }
   function animate() {
     requestAnimationFrame(animate);
-    const t = clockT.getElapsedTime();
-    const dt = Math.min(t - lastT, 0.1); lastT = t; frames++; lastDt = dt;
+    const tRaw = clockT.getElapsedTime();
+    const rawDt = Math.min(tRaw - lastT, 0.1); lastT = tRaw; frames++; lastDt = rawDt;
+    const dt = simPaused ? 0 : rawDt * speedMul;
+    simT += dt;
+    const t = simT;
+    if (orbitOn && !simPaused) camDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), dt * 0.07);
+    if (followId && entries.has(followId)) {
+      const fe = entries.get(followId);
+      desired.x = fe.group.position.x; desired.z = fe.group.position.z;
+    }
+    if (plumbobId && entries.has(plumbobId)) {
+      const pe = entries.get(plumbobId);
+      plumbob.visible = true;
+      plumbob.position.set(pe.group.position.x, pe.group.position.y + 2.75 + Math.sin(t * 3.1) * 0.09, pe.group.position.z);
+      plumbob.rotation.y = t * 2.6;
+    } else plumbob.visible = false;
     if (meeting.active && t > meeting.until) { meeting.active = false; onMeetingChange && onMeetingChange(false); }
     const prevTarget = controls.target.clone();
     controls.target.lerp(v3.set(desired.x, 0, desired.z), 0.07);
@@ -528,7 +568,7 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
     controls.update();
     for (const c of cars) {
       const d = c.userData.drive;
-      c.position.x += d.dir * d.speed * 0.016;
+      c.position.x += d.dir * d.speed * dt * 0.96;
       if (c.position.x > 55) c.position.x = -55;
       if (c.position.x < -55) c.position.x = 55;
       c.userData.wheels.forEach(w => { w.rotation.z -= d.dir * 0.12; });
@@ -592,6 +632,11 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
   animate();
 
   return { update, preset, focusAgent, callMeeting,
+    setPaused: v => { simPaused = !!v; },
+    setSpeed: v => { speedMul = v || 1; },
+    setAmbience, setOrbit: v => { orbitOn = !!v; },
+    setFollow: id => { followId = id || null; },
+    setPlumbob: id => { plumbobId = id || null; },
     debug: () => ({ active: meeting.active, frames, t: +clockT.getElapsedTime().toFixed(1), lastDt, invited: [...meeting.invited],
       pos: [...entries.values()].map(e => [e.agent.id, +e.group.position.x.toFixed(1), +e.group.position.z.toFixed(1), e.agent.kind]) }) };
 }

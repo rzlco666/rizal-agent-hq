@@ -11,7 +11,7 @@ Restart=always
 RestartSec=5
 Environment=HQ_PORT=8900
 Environment=HQ_BIND=127.0.0.1
-Environment=HQ_INTERVAL=30
+Environment=HQ_INTERVAL=6
 Environment=HQ_DATA=%h/rizal-agent-hq/data
 Environment=HQ_WEB=%h/rizal-agent-hq/web
 

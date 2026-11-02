@@ -103,6 +103,9 @@ pub struct Task {
     pub title: String,
     pub detail: String,
     pub phase: TaskPhase,
+    /// Ringkasan sesi hasil perapi LLM $0 (K2-C lapisan 4); None = pakai template.
+    #[serde(default)]
+    pub summary: Option<String>,
     pub steps: Vec<TaskStep>,
     pub started_at: Option<i64>,
     pub ended_at: Option<i64>,
@@ -192,6 +195,21 @@ pub struct FallbackInfo {
     pub note: String,
 }
 
+/// Satu model dari satu provider untuk Dashboard Model & Provider:
+/// angka mentah dari `omp stats --json` (byModel), sudah dipisah TUNAI/bayangan.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelStat {
+    pub provider: String,
+    pub model: String,
+    /// Nama ramah, mis. "DeepSeek V4 Flash".
+    pub friendly: String,
+    pub usage: Usage,
+    /// "tunai" | "bayangan" | "gratis"
+    pub cost_class: String,
+    /// Pangsa biaya model ini dari total biaya semua model (persen).
+    pub share_pct: f64,
+}
+
 /// Snapshot lengkap yang dilayani API & dibaca semua panel.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -203,6 +221,8 @@ pub struct Snapshot {
     pub alerts: Vec<Alert>,
     pub quotas: Vec<Quota>,
     pub total_usage: Usage,
+    #[serde(default)]
+    pub models: Vec<ModelStat>,
     pub deepseek_balance_est: Option<f64>,
     pub fallback: FallbackInfo,
     pub env: EnvInfo,

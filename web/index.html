@@ -90,8 +90,8 @@
   .tabs button.on{border-color:var(--green);color:var(--green);font-weight:600}
   .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:13px}
   .kv dt{color:var(--mut)} .kv dd{margin:0}
-  .overlay{position:absolute;inset:0;background:#edf1f5f6;z-index:9;display:none;padding:16px;overflow:auto}
-  .overlay.open{display:block}
+  .overlay{position:absolute;inset:0;background:#edf1f5f8;z-index:9;padding:18px;overflow:auto;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .22s ease,transform .22s ease;backdrop-filter:blur(3px)}
+  .overlay.open{opacity:1;pointer-events:auto;transform:none}
   .ovHead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .ovHead h2{margin:0;font-size:17px}
   .ovHead .sp{flex:1}
@@ -114,6 +114,45 @@
   #grid2d{display:none;position:absolute;inset:0;overflow:auto;padding:56px 14px 60px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;z-index:3;background:#edf1f5}
   .card2d{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px;cursor:pointer;box-shadow:0 2px 8px rgba(31,52,86,.06)}
   .card2d:hover{border-color:var(--blue)}
+
+  #toasts{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:#1e293b;color:#fff;padding:10px 18px;border-radius:99px;font-size:13.5px;box-shadow:0 10px 30px rgba(15,23,42,.35);animation:tin .25s ease}
+  .toast.err{background:#b91c1c}
+  @keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+  .provCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px;margin-bottom:14px}
+  .provCard{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .provCard b{font-size:14.5px}
+  .provCard .row{display:flex;justify-content:space-between;font-size:12.5px;color:#64748b;margin-top:3px}
+  table.mtab{width:100%;border-collapse:collapse;font-size:12.8px;background:#fff}
+  table.mtab th{text-align:left;padding:8px 9px;border-bottom:2px solid var(--line);color:#475569;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:#fff}
+  table.mtab td{padding:7px 9px;border-bottom:1px solid #eef2f7;vertical-align:top}
+  table.mtab tr:hover td{background:#f8fafc}
+  .clsTunai{background:#fee2e2;color:#991b1b;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .clsBayangan{background:#e0e7ff;color:#3730a3;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .clsGratis{background:#dcfce7;color:#166534;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .shareBar{height:5px;background:#e2e8f0;border-radius:99px;min-width:64px;overflow:hidden}
+  .shareBar i{display:block;height:100%;background:#6366f1;border-radius:99px}
+  .alertBtns button{white-space:nowrap}
+
+  *{scrollbar-width:thin;scrollbar-color:#b9c4d6 transparent}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c0cad9;border-radius:99px;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:#8fa1ba;border:2px solid transparent;background-clip:content-box}
+  .alabel .act{display:block;max-width:172px;overflow:hidden;text-overflow:ellipsis;background:#e8f0fe;color:#1d4ed8;border-radius:6px;padding:0 5px;font-size:9px;font-weight:500;margin-top:1px}
+  #simBar{position:absolute;left:14px;bottom:14px;z-index:8;display:flex;gap:6px;align-items:center;background:#ffffffd9;border:1px solid var(--line);border-radius:99px;padding:5px 7px;box-shadow:var(--shadow);backdrop-filter:blur(6px)}
+  #simBar button{background:#fff;border:1px solid var(--line);border-radius:99px;min-width:34px;height:30px;padding:0 9px;cursor:pointer;font-size:14px;transition:all .15s}
+  #simBar button:hover{border-color:#a5b4fc}
+  #simBar button.on{background:#eef2ff;border-color:#6366f1}
+  #simBar .seg{display:flex;gap:2px;background:#f1f5f9;border-radius:99px;padding:2px}
+  #simBar .seg button{border:none;background:transparent;min-width:30px;height:24px;font-size:12px;font-weight:700;color:#64748b}
+  #simBar .seg button.on{background:#fff;color:#312e81;box-shadow:0 1px 4px rgba(15,23,42,.15)}
+  .langsw{display:flex;gap:2px;background:#f1f5f9;border:1px solid var(--line);border-radius:99px;padding:2px}
+  .langsw button{border:none;background:transparent;border-radius:99px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#64748b;cursor:pointer}
+  .langsw button.on{background:#fff;color:#312e81;box-shadow:0 1px 4px rgba(15,23,42,.15)}
+  .bcard,.provCard{transition:transform .15s ease,box-shadow .15s ease}
+  .bcard:hover,.provCard:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(31,52,86,.10)}
+  button{transition:background .15s,border-color .15s,color .15s}
 </style>
 </head>
 <body>
@@ -123,20 +162,23 @@
     <img src="logo.svg" alt="Logo">
     <div>
       <h1>RIZAL AGENT HQ</h1>
-      <div class="mut">Kantor Virtual · v2.1 · <span id="clock">memuat…</span></div>
+      <div class="mut">Kantor Virtual · v2.3 · <span id="clock">memuat…</span></div>
     </div>
   </div>
   <nav class="pillnav">
-    <button data-zone="semua" class="on">🏢 Ruang kendali</button>
+    <button data-zone="semua" class="on">🏢 <span data-i18n="navCtrl">Ruang kendali</span></button>
     <button id="navMeet">📣 Panggil meeting</button>
-    <button id="navBoard">📋 Papan tugas</button>
-    <button id="navFac">🛠️ Fasilitas</button>
-    <button data-zone="alert">🚨 Fokus alert</button>
+    <button id="navBoard">📋 <span data-i18n="navBoard">Papan tugas</span></button>
+    <button id="navFac">🛠️ <span data-i18n="navFac">Fasilitas</span></button>
+    <button id="navModels">🧠 <span data-i18n="navModels">Model & Provider</span></button>
+    <button data-zone="alert">🚨 <span data-i18n="navAlert">Fokus alert</span></button>
   </nav>
   <div class="sp"></div>
   <span id="wsState">menghubungkan…</span>
   <span class="badge zero" id="alertBadge" title="Alert aktif">🚨 0</span>
-  <input id="searchBox" type="search" placeholder="Cari agen atau tim…">
+  <span id="ageEl" class="mut small"></span>
+  <div class="langsw"><button data-lang="id">ID</button><button data-lang="en">EN</button><button data-lang="zh">中文</button></div>
+  <input id="searchBox" type="search" data-i18n-ph="searchPh" placeholder="Cari agen atau tim…">
 </header>
 
 <div id="stageWrap">
@@ -152,9 +194,9 @@
   <div id="bubbleTip"></div>
 
   <aside id="panel">
-    <h2>Ringkasan hari ini</h2>
+    <h2 data-i18n="secToday">Ringkasan hari ini</h2>
     <div class="kpi" id="kpi"></div>
-    <h2>🚨 Butuh Rizal</h2>
+    <h2>🚨 <span data-i18n="secNeeds">Butuh Rizal</span></h2>
     <div id="alerts"><p class="mut small">Tidak ada alert aktif. Semua aman.</p></div>
     <h2>Kuota provider</h2>
     <div id="quotas"></div>
@@ -176,15 +218,26 @@
   </div>
 
   <div id="boardOverlay" class="overlay">
-    <div class="ovHead"><h2>📋 Papan Tugas</h2><span class="mut small">Semua tugas agen, dikelompokkan per fase — diperbarui langsung</span><div class="sp"></div><button data-closeov>✕ Tutup</button></div>
+    <div class="ovHead"><h2>📋 <span data-i18n="boardT">Papan Tugas</span></h2><span class="mut small" data-i18n="boardSub">Semua tugas agen, dikelompokkan per fase — diperbarui langsung</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
     <div id="boardCols"></div>
   </div>
+  <div id="modelsOverlay" class="overlay">
+    <div class="ovHead"><h2>🧠 <span data-i18n="modT">Dashboard Model & Provider</span></h2><span class="mut small" data-i18n="modSub">Semua model dari semua provider — request, token, dan biaya per model (data omp stats)</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
+    <div id="modelsBody"></div>
+  </div>
   <div id="facOverlay" class="overlay">
-    <div class="ovHead"><h2>🛠️ Fasilitas & Lingkungan</h2><span class="mut small">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov>✕ Tutup</button></div>
+    <div class="ovHead"><h2>🛠️ <span data-i18n="facT">Fasilitas & Lingkungan</span></h2><span class="mut small" data-i18n="facSub">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov>✕ <span data-i18n="close">Tutup</span></button></div>
     <div id="facBody"></div>
   </div>
 
-  <div id="hint">Klik agen / chip nama untuk detail · Seret untuk geser · Scroll untuk zoom</div>
+  <div id="hint">Klik agen / chip nama untuk detail · Seret untuk geser · Scroll untuk zoom · Shortcut: M meeting · B papan · F fasilitas · P model · 1–7 zona · Esc tutup</div>
+  <div id="simBar">
+    <button id="simPause" data-i18n-title="simPauseT" title="Jeda / lanjutkan animasi">⏸️</button>
+    <div class="seg" id="simSpeed"><button data-v="1" class="on">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></div>
+    <button id="simAmb" title="Suasana: siang / senja / malam">🌞</button>
+    <button id="simOrbit" data-i18n-title="simOrbitT" title="Kamera mengorbit otomatis">🎥</button>
+    <button id="simFollow" data-i18n-title="simFollowT" title="Kamera mengikuti agen terpilih">🎯</button>
+  </div>
   <div id="zoneBar">
     <button data-zone="semua" class="on">Seluruh kantor</button>
     <button data-zone="Muse"><i style="background:#7db4ff"></i>Studio Muse</button>
@@ -206,5 +259,6 @@
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
 <script type="module" src="app.js"></script>
+<div id="toasts"></div>
 </body>
 </html>

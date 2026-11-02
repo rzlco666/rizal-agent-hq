@@ -1,55 +1,55 @@
 <p align="center">
-  <img src="web/logo.svg" width="128" alt="Logo Rizal Agent HQ">
+  <img src="web/logo.svg" width="128" alt="Rizal Agent HQ logo">
 </p>
 
 <h1 align="center">Rizal Agent HQ</h1>
 
 <p align="center">
-  <b>Markas 3D untuk semua agent AI yang bekerja untukmu.</b><br>
-  Satu ruangan, semua agent terlihat bekerja — dengan tugas &amp; log <i>manusiawi</i>,<br>
-  usage per agent, dan alert saat ada yang <i>butuh kamu</i>.
+  <b>A 3D headquarters for every AI agent that works for you.</b><br>
+  One room, every agent visibly at work — with <i>human-friendly</i> tasks &amp; logs,<br>
+  per-agent usage, and alerts whenever someone <i>needs you</i>.
 </p>
 
 <p align="center">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.99-dea584?logo=rust&logoColor=white">
   <img alt="Axum" src="https://img.shields.io/badge/Axum-0.8-2f3b52">
   <img alt="Three.js" src="https://img.shields.io/badge/Three.js-3D-049ef4?logo=threedotjs&logoColor=white">
-  <img alt="Lisensi MIT" src="https://img.shields.io/badge/License-MIT-3ddc97">
-  <img alt="Satu binary" src="https://img.shields.io/badge/Deploy-1%20binary%20~5MB-ffb454">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-3ddc97">
+  <img alt="Single binary" src="https://img.shields.io/badge/Deploy-1%20binary%20~5MB-ffb454">
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/screenshot.png" width="880" alt="Kantor 3D Rizal Agent HQ dengan data asli: agent utama di meja depan, worker robot di belakang, panel alert Kritis dan kuota di kanan">
+  <img src="docs/screenshot.png" width="880" alt="The Rizal Agent HQ 3D office with real data: main agents at the front desks, robot workers behind them, Critical alerts and quota panels on the right">
 </p>
-<p align="center"><i>Kantor 3D dengan data asli — OMP, Cursor, Muse di baris depan; worker robot &amp; MCP di belakang; alert Kritis dan kuota provider di panel kanan.</i></p>
+<p align="center"><i>The 3D office running on real data — OMP, Cursor, and Muse in the front row; robot workers &amp; MCP behind them; Critical alerts and provider quotas in the right-hand panel.</i></p>
 
-## ✨ Kenapa ada proyek ini?
+## ✨ Why does this project exist?
 
-Agent AI modern tidak bekerja sendirian lagi: ada asisten utama, mesin coding
-multi-provider, subagent yang dipanggil-panggil, editor AI, server MCP — semua
-jalan bersamaan, dan pemiliknya **tidak bisa melihat apa-apa**. Terminal penuh
-log mentah, biaya token tercecer, dan tidak ada yang memberi tahu saat seorang
-agent diam-diam menunggu keputusanmu selama dua jam.
+Modern AI agents no longer work alone: there's a main assistant, a multi-provider
+coding engine, subagents spawned on demand, an AI editor, MCP servers — all
+running at the same time, and their owner **can't see any of it**. Terminals are
+full of raw logs, token costs are scattered everywhere, and nobody tells you
+when an agent has been silently waiting for your decision for two hours.
 
-**Rizal Agent HQ** mengubah semua itu menjadi satu **kantor 3D yang hidup**:
+**Rizal Agent HQ** turns all of that into one **living 3D office**:
 
 | | |
 |---|---|
-| 🏢 **Per agent, bukan per mesin** | Yang tampil adalah *siapa yang bekerja*: tiap agent & worker punya meja, karakter, dan status sendiri. Mesin (WSL/Docker/Git) cuma panel pendukung. |
-| 🧑‍🤝‍🧑 **Karakter campuran** | Agent utama = manusia low-poly; worker & MCP = robot kecil sewarna induknya. Sekali lirik tahu siapa pegawai tetap, siapa pekerja panggilan. |
-| 🗣️ **Log & tugas manusiawi** | Bukan `bash -c CARGO_BUILD_JOBS=2 cargo test …`, melainkan *"OMP menjalankan tes strut-stack-sql — 188 tes hijau."* Log mentah tetap ada, di balik toggle. |
-| 👆 **View detail beneran** | Klik karakter → detail 5 tab: Ringkasan, Tugas, Log, Usage, Sesi & File. |
-| 🚨 **Alert "Butuh Kamu"** | Kuota penuh, saldo menipis, agent mati mendadak, sesi menunggu input — muncul sebagai alert bertingkat, yang **Kritis** diteruskan ke WhatsApp. |
-| 💸 **Biaya per agent, jujur** | Token & biaya diatribusikan per agent/sesi, selalu dipisah **TUNAI vs bayangan** (langganan). Tidak ada lagi "total $16" yang tidak jelas punya siapa. |
-| 🔌 **Dinamis & plug & play** | Sumber data = registry: tambah konektor baru cukup satu fungsi + satu baris. Agent luar bisa ikut tampil hanya dengan POST heartbeat. |
+| 🏢 **Per agent, not per machine** | What you see is *who is working*: every agent & worker has its own desk, character, and status. Machines (WSL/Docker/Git) are just supporting panels. |
+| 🧑‍🤝‍🧑 **Mixed characters** | Main agents = low-poly humans; workers & MCP = small robots in their parent's colors. One glance tells you who's a permanent employee and who's an on-call contractor. |
+| 🗣️ **Human-friendly logs & tasks** | Not `bash -c CARGO_BUILD_JOBS=2 cargo test …`, but *"OMP is running the strut-stack-sql test suite — 188 tests green."* The raw log is still there, behind a toggle. |
+| 👆 **A real detail view** | Click a character → a 5-tab detail view: Summary, Tasks, Log, Usage, Sessions & Files. |
+| 🚨 **"Needs You" alerts** | A full quota, a dwindling balance, an agent dying unexpectedly, a session waiting for input — all surface as tiered alerts, and **Critical** ones are forwarded to WhatsApp. |
+| 💸 **Honest per-agent costs** | Tokens & costs are attributed per agent/session, always split into **CASH vs shadow** (subscription). No more unexplained "total $16" that belongs to no one. |
+| 🔌 **Dynamic & plug-and-play** | Data sources live in a registry: adding a new connector takes one function + one line. External agents can join the office with a simple heartbeat POST. |
 
-## 🚀 Pasang (plug & play)
+## 🚀 Install (plug & play)
 
-Butuh: Linux dengan `systemd --user`, Rust (untuk build), dan itu saja.
-OMP/Cursor/agent lain **opsional** — yang tidak ada akan tampil *Offline*,
-sisanya jalan.
+You need: Linux with `systemd --user`, Rust (to build), and that's it.
+OMP/Cursor/other agents are **optional** — whatever isn't there shows as
+*Offline*, and everything else keeps running.
 
 ```bash
 git clone https://github.com/rzlco666/rizal-agent-hq.git
@@ -57,86 +57,89 @@ cd rizal-agent-hq
 ./scripts/install.sh
 ```
 
-Selesai. Buka **http://localhost:8900/** — kantor 3D-mu langsung terisi dari
-mesinmu sendiri. Copot kapan saja dengan `./scripts/uninstall.sh`.
+Done. Open **http://localhost:8900/** — your 3D office fills up straight from
+your own machine. Remove it any time with `./scripts/uninstall.sh`.
 
-Jalan manual tanpa systemd:
+Run it manually, without systemd:
 
 ```bash
 cargo run --release -p hq-server      # http://127.0.0.1:8900/
-cargo test --workspace                # 13+ test
+cargo test --workspace                # 13+ tests
 ```
 
-## ⚙️ Konfigurasi (semua lewat env, tanpa file wajib)
+## ⚙️ Configuration (all via env, no mandatory files)
 
-| Env | Bawaan | Arti |
+| Env | Default | Meaning |
 |---|---|---|
-| `HQ_PORT` | `8900` | Port server |
-| `HQ_BIND` | `127.0.0.1` | Alamat dengar |
-| `HQ_INTERVAL` | `30` | Interval kumpul data (detik) |
-| `HQ_DATA` | `data/` | Folder SQLite + heartbeat |
-| `HQ_WEB` | `web/` | Folder UI statis |
-| `HQ_SOURCES` | *(semua)* | Daftar putih sumber, mis. `omp,cursor,Muse` |
-| `HQ_DISABLE_SOURCES` | — | Matikan sumber tertentu, mis. `mcp` |
+| `HQ_PORT` | `8900` | Server port |
+| `HQ_BIND` | `127.0.0.1` | Listen address |
+| `HQ_INTERVAL` | `30` | Data collection interval (seconds) |
+| `HQ_DATA` | `data/` | Folder for SQLite + heartbeats |
+| `HQ_WEB` | `web/` | Static UI folder |
+| `HQ_SOURCES` | *(all)* | Source allowlist, e.g. `omp,cursor,Muse` |
+| `HQ_DISABLE_SOURCES` | — | Disable specific sources, e.g. `mcp` |
 
-## 🧩 Dinamis: menambah agent & konektor baru
+## 🧩 Dynamic: adding new agents & connectors
 
-Tiga jalur, sedalam yang kamu butuhkan — panduan lengkap di
-**[docs/MENAMBAH-SUMBER.md](docs/MENAMBAH-SUMBER.md)**:
+Three paths, as deep as you need — the full guide is in
+**[docs/ADDING-A-SOURCE.md](docs/ADDING-A-SOURCE.md)**:
 
-1. **Heartbeat API (tanpa kode)** — agent/perkakas apa pun POST ke
-   `/api/heartbeat`, langsung tampil di kantor.
-2. **Sumber kolektor (±30 baris Rust)** — satu fungsi + satu baris registrasi
-   di `registry()`; UI, alert, dan laporan mengikut otomatis berkat model
-   seragam.
-3. **On/off via env** — `HQ_SOURCES` / `HQ_DISABLE_SOURCES`, tanpa kompilasi ulang.
+1. **Heartbeat API (no code)** — any agent/tool POSTs to `/api/heartbeat`
+   and immediately appears in the office.
+2. **Collector source (±30 lines of Rust)** — one function + one registration
+   line in `registry()`; the UI, alerts, and reports follow automatically
+   thanks to the uniform model.
+3. **On/off via env** — `HQ_SOURCES` / `HQ_DISABLE_SOURCES`, no recompiling.
 
-Sumber bawaan: `omp` (stats, kuota, sesi & worker per sesi), `cursor`,
-`Muse` (heartbeat + Tailscale), `coding-agents` (Claude Code/Codex/Devin
-bila jalan), `mcp`.
+Built-in sources: `omp` (stats, quotas, sessions & per-session workers),
+`cursor`, `Muse` (heartbeat + Tailscale), `coding-agents` (Claude Code/Codex/
+Devin when running), `mcp`.
 
-## 🏗️ Arsitektur
+## 🏗️ Architecture
 
 ```
-            ┌───────────────────────── SATU BINARY RUST ─────────────────────────┐
- sumber ───▶│ hq-collect (registry) ─▶ hq-core (model seragam + Humanizer)       │
- (omp,      │        │                                  │                         │
-  cursor,   │        ▼                                  ▼                         │
-  Muse…)   │   hq-alert (mesin aturan)          hq-server (Axum)                 │
-            │        │                       REST + WebSocket + SQLite            │
-            └────────┼───────────────────────────────────┬───────────────────────┘
+            ┌─────────────────────── ONE RUST BINARY ────────────────────────┐
+ sources ──▶│ hq-collect (registry) ─▶ hq-core (uniform model + Humanizer)   │
+ (omp,      │        │                                  │                     │
+  cursor,   │        ▼                                  ▼                     │
+  Muse…)   │   hq-alert (rule engine)           hq-server (Axum)             │
+            │        │                       REST + WebSocket + SQLite        │
+            └────────┼───────────────────────────────────┬───────────────────┘
                      ▼                                   ▼
-              Alert Center                       web/ — kantor 3D (Three.js)
-              + WhatsApp (Kritis)                manusia & robot, live via WS
+              Alert Center                       web/ — 3D office (Three.js)
+              + WhatsApp (Critical)              humans & robots, live via WS
 ```
 
-Prinsip yang tidak bisa ditawar:
+Non-negotiable principles:
 
-- **6 status seragam** untuk semua agent: `Bekerja · Berpikir · Menunggu Rizal · Santai · Offline · Error`.
-- **Manusiawi dulu** — pola kalimat tetap: `[Agent] [kata kerja] [objek] — [detail]`.
-- **Read-only & aman** — kolektor tidak mengubah apa pun di mesin; semua teks bebas disensor dari rahasia (API key/token tidak pernah tampil/tersimpan).
-- **Satu sumber kebenaran** — semua panel membaca `Snapshot` yang sama dari `hq-core`.
+- **6 uniform statuses** for every agent: `Bekerja · Berpikir · Menunggu Rizal · Santai · Offline · Error`.
+- **Human-friendly first** — one fixed sentence pattern: `[Agent] [human verb] [object] — [detail]`.
+- **Read-only & safe** — collectors never change anything on the machine; all free text is scrubbed of secrets (API keys/tokens are never displayed or stored).
+- **One source of truth** — every panel reads the same `Snapshot` from `hq-core`.
 
-Spesifikasi produk lengkap: **[PRD.md](PRD.md)**.
+The full product specification: **[PRD.md](PRD.md)**.
 
 ## 🗺️ Status
 
-| Tahap | Isi | Status |
+| Stage | Contents | Status |
 |---|---|---|
-| M1 | Kerangka Rust + kolektor + SQLite + API | ✅ selesai, terverifikasi data asli |
-| M2 | Humanisasi sesi + worker per sesi + WebSocket | ✅ selesai, terverifikasi data asli |
-| M3 | Kantor 3D + view detail 5 tab | ✅ selesai, terverifikasi tangkapan layar data asli |
-| M4 | Alert Center + jembatan WhatsApp | ✅ Alert Center live; jembatan Kritis jalan tiap ±15 mnt (saluran WhatsApp aktif begitu akun tertaut) |
-| M5 | Rilis GitHub + pasang systemd + laporan harian | ✅ live di WSL (port 8900) + repo publik; panel kuota menampilkan rantai fallback OpenCode Go → DeepSeek |
-| M6 | Redesign kantor virtual isometrik terang | ✅ kamera ortografik isometrik, ruangan kaca berperabot per tim, lingkungan hidup (jalan, zebra cross, mobil berjalan, pohon), chip nama melayang, UI terang pill + pencarian agen |
-| M7 | Fitur kantor virtual lengkap | ✅ **Panggil Meeting** (agen utama berjalan ke ruang meeting ±30 dtk), **Papan Tugas** kanban 4 fase, **Fasilitas** (host/Docker/Tailscale/kuota jebol/fallback), interior bisa diklik (sofa, tenis meja, rak server, layar meeting, papan pintu), label versi v2.1 |
+| M1 | Rust skeleton + collectors + SQLite + API | ✅ done, verified against real data |
+| M2 | Session humanization + per-session workers + WebSocket | ✅ done, verified against real data |
+| M3 | 3D office + 5-tab detail view | ✅ done, verified with screenshots of real data |
+| M4 | Alert Center + WhatsApp bridge | ✅ Alert Center live; Critical bridge runs every ±15 min (the WhatsApp channel activates once the account is linked) |
+| M5 | GitHub release + systemd install + daily report | ✅ live on WSL (port 8900) + public repo; the quota panel shows the OpenCode Go → DeepSeek fallback chain |
+| M6 | Bright isometric virtual office redesign | ✅ isometric orthographic camera, furnished glass rooms per team, a living environment (roads, zebra crossing, moving cars, trees), floating name chips, bright pill UI + agent search |
+| M7 | Complete virtual office features | ✅ **Call Meeting** (main agents walk to the meeting room for ±30 s), **Task Board** 4-phase kanban, **Facilities** (host/Docker/Tailscale/blown quotas/fallback), clickable interior (sofa, ping-pong table, server racks, meeting screen, entrance sign), version label v2.1 |
+| M8 | Intelligence & control release | ✅ **LLM session-summary polisher** ($0 models via OMP with template fallback, SQLite cache), **Models & Providers dashboard** (per-model requests/tokens/cost, CASH vs SHADOW classes), **alert actions that persist** (SQLite-backed ack/snooze applied instantly over WebSocket), new minimalist logo, version v2.2 |
+| M9 | Realtime Sims-style office | ✅ 6-second refresh (split TTL caches), **every parallel OMP main session gets its own figure**, realtime process line above agents' heads, **The Sims controls** (pause, 1×/2×/4× speed, day/sunset/night ambience, auto-orbit, follow-cam, plumbob over the selected agent), **trilingual UI (EN/ID/中文)**, slimmer scrollbars & smoother overlays, Muse presence tiers from heartbeats, version v2.3 |
 
-## 🤝 Berkontribusi
+## 🤝 Contributing
 
-Sumber data baru adalah kontribusi paling berharga: kalau agent/perkakas
-favoritmu belum punya kolektor, ikuti [docs/MENAMBAH-SUMBER.md](docs/MENAMBAH-SUMBER.md)
-— satu fungsi, satu baris registrasi, selesai.
+New data sources are the most valuable contribution: if your favorite
+agent/tool doesn't have a collector yet, follow
+[docs/ADDING-A-SOURCE.md](docs/ADDING-A-SOURCE.md) — one function, one
+registration line, done.
 
-## 📄 Lisensi
+## 📄 License
 
-MIT © 2026 Syahrizal Hanif ([@rzlco666](https://github.com/rzlco666)) — dibangun dari nol.
+MIT © 2026 Syahrizal Hanif ([@rzlco666](https://github.com/rzlco666)) — built from scratch.
