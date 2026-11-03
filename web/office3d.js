@@ -424,10 +424,11 @@ export function initOffice(stageEl, { onSelect, onHover, onInteract, onMeetingCh
         : '';
       const actShort = actTxt.length > 46 ? actTxt.slice(0, 46) + '…' : actTxt;
       const actHtml = actShort ? `<small class="act">${actShort.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</small>` : '';
-      const chipSig = short + '|' + a.status + '|' + actShort;
+      const chipSig = short + '|' + a.status + '|' + (a.role || '') + '|' + actShort;
       if (e._sig !== chipSig) {
         e._sig = chipSig;
-        e.chip.innerHTML = `<span class="nm"><i style="background:${dot}"></i>${short}</span><small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
+        const roleHtml = a.role ? `<span class="rolepill">${a.role.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>` : '';
+        e.chip.innerHTML = `<span class="nm"><i style="background:${dot}"></i>${short}</span>${roleHtml}<small>${(window.HQ_STATUS && window.HQ_STATUS[a.status]) || STATUS_LABEL[a.status] || a.status}</small>${actHtml}`;
         e._w = e.chip.offsetWidth || 120; e._h = e.chip.offsetHeight || 44;
       }
       e.chip.style.opacity = a.status === 'offline' ? 0.55 : 1;

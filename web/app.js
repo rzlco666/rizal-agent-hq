@@ -2,7 +2,7 @@
 import { initOffice } from './office3d.js';
 
 const $ = s => document.querySelector(s);
-const state = { snap: null, selected: null, tab: 'ringkasan', raw: false, office: null, mode2d: false };
+const state = { snap: null, selected: null, tab: 'ringkasan', raw: false, office: null, mode2d: false, perfAgent: null, perfQuery: '' };
 
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(2).replace('.', ',') + ' jt' : n >= 1e3 ? (n / 1e3).toFixed(1).replace('.', ',') + ' rb' : String(n);
 const fmtUsd = n => '$' + n.toFixed(2);
@@ -200,7 +200,63 @@ function openView(name) {
   $('#boardOverlay').classList.toggle('open', name === 'board');
   $('#facOverlay').classList.toggle('open', name === 'fac');
   $('#modelsOverlay').classList.toggle('open', name === 'models');
-  if (state.snap) { if (name === 'board') renderBoard(state.snap); if (name === 'fac') renderFac(state.snap); if (name === 'models') renderModels(state.snap); }
+  $('#perfOverlay').classList.toggle('open', name === 'perf');
+  $('#sahamOverlay').classList.toggle('open', name === 'saham');
+  $('#knowOverlay').classList.toggle('open', name === 'knowledge');
+  if (state.snap) { if (name === 'board') renderBoard(state.snap); if (name === 'fac') renderFac(state.snap); if (name === 'models') renderModels(state.snap); if (name === 'perf') renderPerf(state.snap); }
+}
+
+// ---------- Performance Workspace: donut + hitungan + tabel tugas satu agent (data live) ----------
+function zoneCount(s, zone) {
+  const a = s.agents;
+  if (zone === 'semua') return a.length;
+  if (zone === 'Muse') return a.filter(x => x.id === 'Muse').length;
+  if (zone === 'utama') return a.filter(x => (x.id === 'omp' || x.kind === 'utama') && x.id !== 'Muse' && x.id !== 'cursor').length;
+  if (zone === 'workers') return a.filter(x => x.kind === 'worker' || x.id === 'omp-workers-agg').length;
+  if (zone === 'cursor') return a.filter(x => x.id === 'cursor').length;
+  if (zone === 'meeting') return a.filter(x => x.kind === 'utama').length;
+  if (zone === 'mcp') return a.filter(x => x.id === 'mcp' || x.kind === 'mcp').length;
+  return 0;
+}
+function renderZones(s) {
+  document.querySelectorAll('[data-zcount]').forEach(el => {
+    const z = el.dataset.zcount;
+    const n = zoneCount(s, z);
+    el.textContent = n;
+    const btn = el.closest('button');
+    if (btn && z !== 'semua' && z !== 'meeting') btn.classList.toggle('empty', n === 0);
+    if (btn) btn.title = n === 0 ? 'Belum ada agent di zona ini' : n + ' agent';
+  });
+}
+function renderPerf(s) {
+  const el = $('#perfBody'); if (!el) return;
+  const agents = s.agents;
+  if (!agents.length) { el.innerHTML = '<p class="mut">Belum ada agent terbaca.</p>'; return; }
+  let aid = state.perfAgent;
+  if (!agents.find(a => a.id === aid)) aid = state.selected && agents.find(a => a.id === state.selected) ? state.selected : (agents.find(a => a.status === 'bekerja') || agents[0]).id;
+  state.perfAgent = aid;
+  const a = agentById(aid);
+  const q = (state.perfQuery || '').toLowerCase();
+  const mine = s.tasks.filter(t => t.agent_id === aid && (!q || (t.title + ' ' + t.detail).toLowerCase().includes(q)));
+  const all = s.tasks.filter(t => t.agent_id === aid);
+  const run = all.filter(t => t.phase === 'berjalan' || t.phase === 'antre').length;
+  const wait = all.filter(t => t.phase === 'menunggu-rizal').length;
+  const done = all.filter(t => t.phase === 'selesai').length;
+  const fail = all.filter(t => t.phase === 'gagal').length;
+  const total = all.length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const circ = 2 * Math.PI * 34;
+  const rows = mine.length ? mine.map(t => `<tr><td><b>${esc(t.summary ? '✨ ' + t.summary : t.title)}</b><div class="mut small">${esc(t.detail)}</div></td><td><span class="pill ${esc(t.phase)}">${esc(t.phase)}</span></td><td class="mut small">${t.ended_at ? fmtTime(t.ended_at) + ' WIB' : t.started_at ? fmtTime(t.started_at) + ' WIB' : '—'}</td><td><button data-open-agent="${esc(aid)}">${t('perfOpen')}</button></td></tr>`).join('')
+    : `<tr><td colspan="4" class="mut">${t('perfNoTasks')}</td></tr>`;
+  el.innerHTML = `<div class="perfTop"><label>${t('perfAgentLbl')} <select id="perfSel">${agents.map(x => `<option value="${esc(x.id)}" ${x.id === aid ? 'selected' : ''}>${esc(x.name)} — ${esc(x.role)}</option>`).join('')}</select></label><input id="perfQ" type="search" placeholder="${t('perfSearchPh')}" value="${esc(state.perfQuery)}"><button id="perfDetailBtn">${t('perfDetail')}</button></div>
+  <div class="perfDonut"><svg width="92" height="92" viewBox="0 0 92 92"><circle cx="46" cy="46" r="34" fill="none" stroke="#e8ecf1" stroke-width="11"/><circle cx="46" cy="46" r="34" fill="none" stroke="#1db877" stroke-width="11" stroke-linecap="round" stroke-dasharray="${(circ * pct / 100).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 46 46)"/><text x="46" y="44" text-anchor="middle" font-size="18" font-weight="800" fill="#1c2434">${done}/${total}</text><text x="46" y="60" text-anchor="middle" font-size="10" fill="#7c8698">${t('perfDone')}</text></svg>
+  <div class="perfCounts"><div><i style="background:#4a7dff"></i>${t('perfRun')}<b>${run}</b></div><div><i style="background:#e6a817"></i>${t('perfWait')}<b>${wait}</b></div><div><i style="background:#1db877"></i>${t('perfDone')}<b>${done}</b></div><div><i style="background:#e5484d"></i>${t('perfFail')}<b>${fail}</b></div></div>
+  <div class="mut small">${esc(a.name)} · ${esc(a.role)} · ${esc(a.activity)} · ${all.length} tugas total${q ? ' · filter: ' + esc(state.perfQuery) : ''}</div></div>
+  <table class="mtab"><thead><tr><th>Tugas</th><th>Status</th><th>Diperbarui</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('#perfSel').onchange = e => { state.perfAgent = e.target.value; renderPerf(s); };
+  $('#perfQ').oninput = e => { state.perfQuery = e.target.value; renderPerf(s); };
+  $('#perfDetailBtn').onclick = () => { openView(null); selectAgent(aid); };
+  document.querySelectorAll('#perfBody [data-open-agent]').forEach(b => b.onclick = () => { openView(null); selectAgent(b.dataset.openAgent); });
 }
 function renderBoard(s) {
   const cols = [
@@ -284,15 +340,15 @@ function renderModels(s) {
 // ================= i18n: ID / EN / 中文 (kerangka UI; kalimat aktivitas agen dari server tetap apa adanya) =================
 let LANG = localStorage.getItem('hq-lang') || 'id';
 const DICT = {
-  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP',
+  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP', navStudio:'Studio', navStocks:'Saham', navKnow:'Pengetahuan', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh', perfAgentLbl:'Agent', perfSearchPh:'Cari tugas…', perfRun:'Dikerjakan', perfWait:'Menunggu review', perfDone:'Selesai', perfFail:'Perlu diperiksa', perfOpen:'Buka tugas', perfNoTasks:'Belum ada tugas tercatat untuk agent ini.', perfDetail:'Buka detail agent', sahamT:'Saham', sahamSub:'Modul ini belum dihubungkan ke sumber data apa pun', knowT:'Pengetahuan', knowSub:'Modul ini belum dihubungkan ke sumber dokumen apa pun',
     kpiReq:'request OMP tercatat', kpiTok:'token (masuk+keluar)', kpiCash:'biaya TUNAI', kpiShadow:'biaya bayangan (langganan)', kpiBal:'estimasi saldo DeepSeek', working:'bekerja', ofAgents:'dari {n} agent tampil', allSafe:'Tidak ada alert aktif. Semua aman.', ack:'Sudah saya tangani', snooze:'Tunda', since:'Sejak', agentW:'agent', colRun:'Sedang berjalan', colWait:'Menunggu Rizal', colDone:'Selesai', colFail:'Gagal',
     mModel:'Model', mProvider:'Provider', mReq:'Request', mTokIn:'Token masuk', mCost:'Biaya', mClass:'Kelas', mShare:'Pangsa', mFailed:'gagal', mOut:'keluar', mCache:'cache', mCash:'tunai', mShadow:'bayangan', modelsEmpty:'Belum ada data model — OMP stats belum terbaca.', modelsNote:'Kelas TUNAI = uang nyata keluar (DeepSeek API & model berbayar gateway). BAYANGAN = setara-API provider langganan, bukan tagihan baru (OpenCode Go termasuk bayangan — meteran limit dari langganan flat $10/bln). GRATIS = model $0. Diurutkan dari biaya terbesar.',
     clsTunai:'TUNAI', clsBayangan:'BAYANGAN', clsGratis:'GRATIS', tabSummary:'Ringkasan', tabTasks:'Tugas', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sesi & File', toastAck:'Alert ditandai sudah ditangani — tersimpan, tidak akan muncul lagi.', toastSnooze:'Alert ditunda {h} jam — tersimpan.', toastFail:'Aksi alert gagal terkirim — cek koneksi ke server HQ.', updatedAgo:'diperbarui {n} dtk lalu', simPauseT:'Jeda / lanjutkan animasi', simOrbitT:'Kamera mengorbit otomatis', simFollowT:'Kamera mengikuti agen terpilih', pickAgentFirst:'Pilih agen dulu (klik figurnya), lalu aktifkan Ikuti 🎯', raw:'LIHAT MENTAH' },
-  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Drag to pan · Scroll to zoom · Click an agent for details', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers',
+  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Drag to pan · Scroll to zoom · Click an agent for details', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers', navStudio:'Studio', navStocks:'Stocks', navKnow:'Knowledge', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'One agent\'s progress and tasks — from real HQ task data, not samples', perfAgentLbl:'Agent', perfSearchPh:'Search tasks…', perfRun:'In progress', perfWait:'Waiting for review', perfDone:'Done', perfFail:'Needs review', perfOpen:'Open task', perfNoTasks:'No tasks recorded for this agent yet.', perfDetail:'Open agent detail', sahamT:'Stocks', sahamSub:'This module is not connected to any data source yet', knowT:'Knowledge', knowSub:'This module is not connected to any document source yet',
     kpiReq:'OMP requests recorded', kpiTok:'tokens (in+out)', kpiCash:'CASH cost', kpiShadow:'shadow cost (subscriptions)', kpiBal:'est. DeepSeek balance', working:'working', ofAgents:'of {n} agents shown', allSafe:'No active alerts. All clear.', ack:'Handled', snooze:'Snooze', since:'Since', agentW:'agent', colRun:'In progress', colWait:'Waiting for Rizal', colDone:'Done', colFail:'Failed',
     mModel:'Model', mProvider:'Provider', mReq:'Requests', mTokIn:'Tokens in', mCost:'Cost', mClass:'Class', mShare:'Share', mFailed:'failed', mOut:'out', mCache:'cache', mCash:'cash', mShadow:'shadow', modelsEmpty:'No model data yet — OMP stats not read.', modelsNote:'CASH class = real money out (DeepSeek API & paid gateway models). SHADOW = API-equivalent cost of subscription providers, not a new bill (OpenCode Go counts as shadow — a metered limit on the flat $10/mo plan). FREE = $0 models. Sorted by cost, descending.',
     clsTunai:'CASH', clsBayangan:'SHADOW', clsGratis:'FREE', tabSummary:'Summary', tabTasks:'Tasks', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sessions & Files', toastAck:'Alert marked handled — saved, it will not reappear.', toastSnooze:'Alert snoozed for {h} h — saved.', toastFail:'Alert action failed to send — check the HQ server connection.', updatedAgo:'updated {n}s ago', simPauseT:'Pause / resume animation', simOrbitT:'Auto-orbit camera', simFollowT:'Camera follows the selected agent', pickAgentFirst:'Select an agent first (click its figure), then enable Follow 🎯', raw:'VIEW RAW' },
-  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'拖动平移 · 滚动缩放 · 点击代理查看详情', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器',
+  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'拖动平移 · 滚动缩放 · 点击代理查看详情', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器', navStudio:'工作室', navStocks:'股票', navKnow:'知识库', navPerf:'绩效', perfT:'绩效工作区', perfSub:'单个代理的进度与任务 — 来自真实 HQ 任务数据，而非示例', perfAgentLbl:'代理', perfSearchPh:'搜索任务…', perfRun:'进行中', perfWait:'等待审核', perfDone:'已完成', perfFail:'需要检查', perfOpen:'打开任务', perfNoTasks:'该代理暂无任务记录。', perfDetail:'打开代理详情', sahamT:'股票', sahamSub:'该模块尚未连接任何数据源', knowT:'知识库', knowSub:'该模块尚未连接任何文档源',
     kpiReq:'已记录的 OMP 请求', kpiTok:'令牌（入+出）', kpiCash:'现金成本', kpiShadow:'影子成本（订阅）', kpiBal:'DeepSeek 余额估算', working:'工作中', ofAgents:'共显示 {n} 个代理', allSafe:'没有活动警报，一切正常。', ack:'已处理', snooze:'推迟', since:'自', agentW:'代理', colRun:'进行中', colWait:'等待 Rizal', colDone:'已完成', colFail:'失败',
     mModel:'模型', mProvider:'提供商', mReq:'请求', mTokIn:'输入令牌', mCost:'费用', mClass:'类别', mShare:'占比', mFailed:'失败', mOut:'输出', mCache:'缓存', mCash:'现金', mShadow:'影子', modelsEmpty:'暂无模型数据 — 尚未读取 OMP stats。', modelsNote:'现金类 = 真实支出（DeepSeek API 与付费网关模型）。影子类 = 订阅提供商的 API 等值费用，并非新账单（OpenCode Go 属于影子 — $10/月固定套餐的计量额度）。免费 = $0 模型。按费用从高到低排序。',
     clsTunai:'现金', clsBayangan:'影子', clsGratis:'免费', tabSummary:'概要', tabTasks:'任务', tabLog:'日志', tabUsage:'用量', tabSessions:'会话与文件', toastAck:'警报已标记为已处理 — 已保存，不会再次出现。', toastSnooze:'警报已推迟 {h} 小时 — 已保存。', toastFail:'警报操作发送失败 — 请检查与 HQ 服务器的连接。', updatedAgo:'{n} 秒前更新', simPauseT:'暂停 / 继续动画', simOrbitT:'相机自动环绕', simFollowT:'相机跟随所选代理', pickAgentFirst:'请先选择一个代理（点击其形象），再开启跟随 🎯', raw:'查看原文' },
@@ -333,6 +389,8 @@ function renderAll(s) {
   if (view.open === 'board' && changed('board', LANG + J(s.tasks) + names)) renderBoard(s);
   if (view.open === 'fac' && changed('fac', LANG + J(s.env) + J(s.quotas) + J(s.fallback) + s.agents.length)) renderFac(s);
   if (view.open === 'models' && changed('models', LANG + J(s.models) + J(s.quotas))) renderModels(s);
+  if (changed('zones', LANG + J(s.agents.map(a => a.id + a.status + a.kind)))) renderZones(s);
+  if (view.open === 'perf' && changed('perf', LANG + state.perfAgent + state.perfQuery + J(s.tasks) + names)) renderPerf(s);
   if (state.office && !state.mode2d) state.office.update(s.agents);
   if (state.selected && changed('drawer', LANG + state.tab + state.selected + J(s.agents) + J(s.tasks) + J(s.events) + J(s.alerts))) renderDrawer();
   if (_wantMeet && state.office) { _wantMeet = false; state.office.callMeeting(); }
@@ -443,12 +501,19 @@ $('#navMeet').onclick = () => { state.office?.callMeeting(); };
 $('#navBoard').onclick = () => openView(view.open === 'board' ? null : 'board');
 $('#navFac').onclick = () => openView(view.open === 'fac' ? null : 'fac');
 $('#navModels').onclick = () => openView(view.open === 'models' ? null : 'models');
+$('#navPerf').onclick = () => openView(view.open === 'perf' ? null : 'perf');
+$('#navStudio').onclick = () => { document.querySelectorAll('[data-zone]').forEach(x => x.classList.toggle('on', x.dataset.zone === 'Muse')); state.office?.preset('Muse', state.snap?.agents); };
+$('#navStocks').onclick = () => openView(view.open === 'saham' ? null : 'saham');
+$('#navKnow').onclick = () => openView(view.open === 'knowledge' ? null : 'knowledge');
 document.querySelectorAll('[data-closeov]').forEach(b => b.onclick = () => openView(null));
 let _wantMeet = false;
 const _qp = new URLSearchParams(location.search);
 if (_qp.get('view') === 'board') openView('board');
 if (_qp.get('view') === 'fasilitas') openView('fac');
 if (_qp.get('view') === 'models') openView('models');
+if (_qp.get('view') === 'perf') openView('perf');
+if (_qp.get('view') === 'saham') openView('saham');
+if (_qp.get('view') === 'pengetahuan') openView('knowledge');
 
 // ---------- shortcut keyboard ----------
 document.addEventListener('keydown', e => {

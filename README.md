@@ -74,6 +74,30 @@ cargo run --release -p hq-server      # http://127.0.0.1:8900/
 cargo test --workspace                # 13+ tests
 ```
 
+## ✨ Baru di cabang ini: Performance Workspace, zona dinamis, dan nav lengkap
+
+- **Performance Workspace** (tombol `Performance` di nav atas): pilih satu agent, lihat donut progres
+  selesai/total, hitungan Dikerjakan / Menunggu review / Selesai / Perlu diperiksa, dan tabel tugas
+  dengan kolom Tugas / Status / Diperbarui / Aksi. Tombol `Buka tugas` membuka drawer detail agent
+  itu. Semua angka berasal dari tugas HQ yang sebenarnya; agent tanpa tugas menampilkan pesan
+  kosong yang jujur, bukan angka contoh. Cari tugas lewat kolom pencarian di dalam workspace.
+- **Zona dinamis di bawah panggung**: setiap chip zona (Seluruh kantor, Studio Muse, Ruang OMP,
+  Workers, Cursor, Meeting, Server MCP) sekarang menampilkan jumlah agent yang benar-benar ada
+  di zona itu, diperbarui dari snapshot live. Zona kosong ditampilkan redup dengan keterangan
+  "Belum ada agent di zona ini" — tidak lagi seolah-olah ada isinya.
+- **Label agent**: label melayang di atas figur sekarang menampilkan nama + peran (role) + status,
+  sesuai data agent, bukan hanya nama dan status.
+- **Nav lengkap**: `Studio` (kamera ke Studio Muse), `Saham`, dan `Pengetahuan` ditambahkan di
+  samping `Ruang kendali`, `Panggil meeting`, `Performance`, `Papan tugas`, `Fasilitas`, dan
+  `Model & Provider`. `Saham` dan `Pengetahuan` sengaja masih berupa panel kosong yang jujur:
+  HQ belum dihubungkan ke sumber portofolio atau dokumen apa pun, jadi tidak ada harga, angka,
+  atau dokumen contoh yang ditampilkan. Beri tahu sumbernya (file portofolio / API broker /
+  Google Sheet untuk Saham; folder dokumen / Notion / Google Drive untuk Pengetahuan) untuk
+  mengaktifkan modul tersebut di iterasi berikutnya.
+- **Jalan cepat tanpa install**: `./scripts/quickstart.sh` menjalankan HQ di foreground
+  (default http://localhost:8900/, Ctrl+C untuk berhenti); `./scripts/install.sh` tetap untuk
+  service permanen. Variabel env yang tersedia didokumentasikan di `.env.example`.
+
 ## ⚙️ Configuration (all via env, no mandatory files)
 
 | Env | Default | Meaning |

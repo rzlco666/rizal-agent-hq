@@ -63,7 +63,7 @@
   #main.dockCollapsed #dockToggle svg{transform:rotate(180deg)}
 
   /* ---------- panggung 3D ---------- */
-  #stageCard{grid-area:stage;position:relative;border-radius:var(--r-lg);overflow:hidden;background:#e9edf2;
+  #stageCard{grid-area:stage;position:relative;border-radius:var(--r-lg);overflow:hidden;background:#efe9dc;
              border:1px solid var(--line);box-shadow:var(--shadow);min-height:0}
   #stage{position:absolute;inset:0}
   #stage canvas{display:block}
@@ -74,6 +74,7 @@
   .alabel .nm{display:block;overflow:hidden;text-overflow:ellipsis;max-width:178px}
   .alabel i{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:5px;vertical-align:1px}
   .alabel small{display:block;font-weight:500;color:var(--mut);font-size:9.5px}
+  .alabel .rolepill{display:inline-block;background:#eef2ff;color:#4338ca;border-radius:6px;padding:1px 6px;font-size:9px;font-weight:600;margin-top:2px;max-width:178px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .alabel .act{display:block;max-width:168px;overflow:hidden;text-overflow:ellipsis;background:#eef2ff;color:#4338ca;
                border-radius:6px;padding:1px 6px;font-size:9px;font-weight:600;margin-top:2px}
   .alabel.sel{border-color:var(--indigo);box-shadow:0 0 0 2px rgba(79,70,229,.35),0 8px 20px rgba(16,24,40,.18);z-index:6}
@@ -88,7 +89,7 @@
   #hint{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.82);border:1px solid var(--line);border-radius:99px;
         padding:5px 13px;font-size:11px;color:var(--mut);z-index:5;white-space:nowrap;backdrop-filter:blur(6px)}
   @media (max-width:1380px){#hint{display:none}}
-  #grid2d{display:none;position:absolute;inset:0;overflow:auto;padding:58px 14px 64px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;z-index:3;background:#edf0f3;align-content:start}
+  #grid2d{display:none;position:absolute;inset:0;overflow:auto;padding:58px 14px 64px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;z-index:3;background:#efe9dc;align-content:start}
   .card2d{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:11px;cursor:pointer}
   .card2d:hover{border-color:var(--blue)}
   .mono{display:inline-flex;width:30px;height:30px;border-radius:9px;color:#fff;font-weight:800;align-items:center;justify-content:center;font-size:14px;vertical-align:-7px;margin-right:7px}
@@ -106,6 +107,18 @@
   .zones{display:flex;gap:2px}
   .zones button{background:transparent;border:none;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;white-space:nowrap}
   .zones button i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
+  .zones button .zcount{background:#eef2f7;border-radius:99px;padding:0 7px;color:var(--mut);font-size:11px;margin-left:4px}
+  .zones button.on .zcount{background:rgba(255,255,255,.25);color:#fff}
+  .zones button.empty{opacity:.45}
+  .perfTop{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .perfTop select,.perfTop input{border:1px solid var(--line);border-radius:99px;padding:7px 13px;font-size:12.5px;background:#fff;color:var(--txt)}
+  .perfTop input{flex:1;min-width:220px}
+  .perfDonut{display:flex;gap:22px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;margin-bottom:14px;flex-wrap:wrap}
+  .perfDonut .num{font-size:26px;font-weight:800;line-height:1}
+  .perfCounts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;flex:1}
+  .perfCounts div{background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:8px 11px;font-size:12.5px}
+  .perfCounts b{display:block;font-size:17px}
+  .perfCounts i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
   .zones button:hover{color:var(--txt);background:var(--card2)}
   .zones button.on{background:var(--indigo);color:#fff}
 
@@ -275,6 +288,10 @@
   <nav class="pillnav">
     <button data-zone="semua" class="on"><svg class="ic"><use href="#i-grid"/></svg><span data-i18n="navCtrl">Ruang kendali</span></button>
     <button id="navMeet"><svg class="ic"><use href="#i-mega"/></svg>Panggil meeting</button>
+    <button id="navStudio"><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="navStudio">Studio</span></button>
+    <button id="navStocks"><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="navStocks">Saham</span></button>
+    <button id="navKnow"><svg class="ic"><use href="#i-list"/></svg><span data-i18n="navKnow">Pengetahuan</span></button>
+    <button id="navPerf"><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="navPerf">Performance</span></button>
     <button id="navBoard"><svg class="ic"><use href="#i-kanban"/></svg><span data-i18n="navBoard">Papan tugas</span></button>
     <button id="navFac"><svg class="ic"><use href="#i-building"/></svg><span data-i18n="navFac">Fasilitas</span></button>
     <button id="navModels"><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="navModels">Model &amp; Provider</span></button>
@@ -310,13 +327,13 @@
       <button id="camReset" class="ctlbtn" title="Reset kamera ke tampilan awal"><svg class="ic"><use href="#i-focus"/></svg></button>
       <div class="ctlsep"></div>
       <div class="zones">
-        <button data-zone="semua" class="on"><span data-i18n="zoneAll">Seluruh kantor</span></button>
-        <button data-zone="Muse"><i style="background:#7db4ff"></i><span data-i18n="zoneClaude">Studio Muse</span></button>
-        <button data-zone="utama"><i style="background:#f2c94c"></i><span data-i18n="zoneOmp">Ruang OMP</span></button>
-        <button data-zone="workers"><i style="background:#5fd68b"></i><span data-i18n="zoneWorkers">Workers</span></button>
-        <button data-zone="cursor"><i style="background:#67d7b5"></i><span data-i18n="zoneCursor">Cursor</span></button>
-        <button data-zone="meeting"><i style="background:#b49af2"></i><span data-i18n="zoneMeeting">Meeting</span></button>
-        <button data-zone="mcp"><i style="background:#8fa3bf"></i><span data-i18n="zoneMcp">Server MCP</span></button>
+        <button data-zone="semua" class="on"><span data-i18n="zoneAll">Seluruh kantor</span><span class="zcount" data-zcount="semua">–</span></button>
+        <button data-zone="Muse"><i style="background:#7db4ff"></i><span data-i18n="zoneClaude">Studio Muse</span><span class="zcount" data-zcount="Muse">–</span></button>
+        <button data-zone="utama"><i style="background:#f2c94c"></i><span data-i18n="zoneOmp">Ruang OMP</span><span class="zcount" data-zcount="utama">–</span></button>
+        <button data-zone="workers"><i style="background:#5fd68b"></i><span data-i18n="zoneWorkers">Workers</span><span class="zcount" data-zcount="workers">–</span></button>
+        <button data-zone="cursor"><i style="background:#67d7b5"></i><span data-i18n="zoneCursor">Cursor</span><span class="zcount" data-zcount="cursor">–</span></button>
+        <button data-zone="meeting"><i style="background:#b49af2"></i><span data-i18n="zoneMeeting">Meeting</span><span class="zcount" data-zcount="meeting">–</span></button>
+        <button data-zone="mcp"><i style="background:#8fa3bf"></i><span data-i18n="zoneMcp">Server MCP</span><span class="zcount" data-zcount="mcp">–</span></button>
       </div>
     </div>
   </section>
@@ -363,6 +380,18 @@
   <div id="modelsOverlay" class="overlay">
     <div class="ovHead"><h2><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="modT">Dashboard Model &amp; Provider</span></h2><span class="mut small" data-i18n="modSub">Semua model dari semua provider — request, token, dan biaya per model (data omp stats)</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
     <div id="modelsBody"></div>
+  </div>
+  <div id="perfOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="perfT">Performance Workspace</span></h2><span class="mut small" data-i18n="perfSub">Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="perfBody"></div>
+  </div>
+  <div id="sahamOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="sahamT">Saham</span></h2><span class="mut small" data-i18n="sahamSub">Modul ini belum dihubungkan ke sumber data apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div class="pcard"><p>Belum ada data saham yang ditampilkan, dan tidak ada angka contoh di sini — HQ tidak menampilkan harga, portofolio, atau rekomendasi palsu.</p><p class="mut small">Untuk mengaktifkan modul ini, beri tahu Melo sumbernya: mis. file portofolio, API broker, atau Google Sheet. Setelah sumber dipilih, modul ini akan membaca data itu saja.</p></div>
+  </div>
+  <div id="knowOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-list"/></svg><span data-i18n="knowT">Pengetahuan</span></h2><span class="mut small" data-i18n="knowSub">Modul ini belum dihubungkan ke sumber dokumen apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div class="pcard"><p>Belum ada dokumen yang ditampilkan, dan tidak ada dokumen contoh di sini.</p><p class="mut small">Untuk mengaktifkan modul ini, beri tahu Melo sumbernya: mis. folder dokumen, Notion, atau Google Drive. Setelah sumber dipilih, modul ini akan mengindeks dokumen itu saja.</p></div>
   </div>
   <div id="facOverlay" class="overlay">
     <div class="ovHead"><h2><svg class="ic"><use href="#i-building"/></svg><span data-i18n="facT">Fasilitas &amp; Lingkungan</span></h2><span class="mut small" data-i18n="facSub">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
