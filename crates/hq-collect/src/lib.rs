@@ -912,12 +912,35 @@ fn src_cursor(_state: &mut CollectState, pr: &Probes) -> SourceOut {
     out
 }
 
+/// Status Muse dari heartbeat: status eksplisit "menunggu" mengalahkan usia heartbeat.
+/// Sebelum perbaikan ini, status heartbeat diabaikan total — Muse tidak pernah bisa
+/// berstatus MenungguRizal, sehingga alert "Muse menunggu kamu" tidak pernah bisa hidup.
+fn muse_status_from_heartbeat(at: i64, status_str: &str, now: i64, muse_online: Option<bool>) -> (Status, bool) {
+    let waiting = matches!(
+        status_str.trim().to_lowercase().as_str(),
+        "menunggu-rizal" | "menunggu_rizal" | "menunggu" | "waiting" | "needs-action" | "needs_action" | "butuh-rizal" | "butuh_action" | "perlu-action" | "perlu_action"
+    );
+    if waiting && now - at < 2 * 3600 * 1000 {
+        return (Status::MenungguRizal, true);
+    }
+    if now - at < 15 * 60 * 1000 {
+        (Status::Bekerja, false)
+    } else if now - at < 2 * 3600 * 1000 {
+        (Status::Berpikir, false)
+    } else if muse_online == Some(true) {
+        (Status::Santai, false)
+    } else {
+        (Status::Offline, false)
+    }
+}
+
 // ============================ SUMBER: Muse (heartbeat + Tailscale) ============================
 fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
     let mut out = SourceOut::default();
     let now = pr.now;
-    // Ambil heartbeat TERBARU dari semua berkas (bukan yang terakhir terbaca).
-    let mut newest: Option<(i64, String)> = None;
+    // Ambil heartbeat TERBARU dari semua berkas (bukan yang terakhir terbaca),
+    // termasuk status eksplisitnya (sebelumnya status diabaikan).
+    let mut newest: Option<(i64, String, String)> = None;
     if let Ok(rd) = std::fs::read_dir(&state.heartbeat_dir) {
         for e in rd.flatten() {
             if e.path().extension().map(|x| x == "json").unwrap_or(false) {
@@ -929,8 +952,13 @@ fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
                             .and_then(|x| x.as_str())
                             .unwrap_or("")
                             .to_string();
-                        if newest.as_ref().map(|(a, _)| at > *a).unwrap_or(true) {
-                            newest = Some((at, task));
+                        let st = v
+                            .get("status")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if newest.as_ref().map(|(a, _, _)| at > *a).unwrap_or(true) {
+                            newest = Some((at, task, st));
                         }
                     }
                 }
@@ -938,16 +966,22 @@ fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
         }
     }
     let (status, activity, processes) = match newest {
-        Some((at, task)) if now - at < 15 * 60 * 1000 => (Status::Bekerja, redact(&task), 1),
-        Some((at, task)) if now - at < 2 * 3600 * 1000 => {
-            let menit = ((now - at) / 60000).max(1);
-            (
-                Status::Berpikir,
-                format!("Terakhir melapor {menit} menit lalu: {}", redact(&task)),
-                1,
-            )
+        Some((at, task, st)) => {
+            let (st2, waiting) = muse_status_from_heartbeat(at, &st, now, pr.muse_online);
+            if waiting {
+                (Status::MenungguRizal, redact(&task), 1)
+            } else if st2 == Status::Berpikir {
+                let menit = ((now - at) / 60000).max(1);
+                (Status::Berpikir, format!("Terakhir melapor {menit} menit lalu: {}", redact(&task)), 1)
+            } else if st2 == Status::Bekerja {
+                (Status::Bekerja, redact(&task), 1)
+            } else if st2 == Status::Santai {
+                (Status::Santai, "Muse terhubung lewat Tailscale, belum ada laporan tugas baru".to_string(), 0)
+            } else {
+                (Status::Offline, if pr.muse_online == Some(false) { "Muse tidak terhubung (peer Tailscale offline)".to_string() } else { "Muse belum melapor".to_string() }, 0)
+            }
         }
-        _ => {
+        None => {
             if pr.muse_online == Some(true) {
                 (
                     Status::Santai,
@@ -1191,5 +1225,20 @@ mod tests {
     fn registry_punya_lima_sumber() {
         let ids = known_sources();
         assert_eq!(ids, vec!["omp", "cursor", "Muse", "coding-agents", "mcp"]);
+    }
+}
+
+#[cfg(test)]
+mod muse_waiting_tests {
+    use super::*;
+    #[test]
+    fn muse_waiting_status_beats_age() {
+        let now = 1_000_000_000_000i64;
+        // Heartbeat 5 menit lalu dengan status menunggu -> MenungguRizal, bukan Bekerja
+        assert_eq!(muse_status_from_heartbeat(now - 5 * 60 * 1000, "menunggu-rizal", now, Some(true)).0, Status::MenungguRizal);
+        // Status bekerja biasa tetap Bekerja
+        assert_eq!(muse_status_from_heartbeat(now - 5 * 60 * 1000, "bekerja", now, Some(true)).0, Status::Bekerja);
+        // Status menunggu yang sudah >2 jam tidak lagi dianggap menunggu
+        assert_eq!(muse_status_from_heartbeat(now - 3 * 3600 * 1000, "menunggu-rizal", now, Some(true)).0, Status::Santai);
     }
 }

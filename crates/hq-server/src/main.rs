@@ -1,5 +1,5 @@
 //! hq-server — Rizal Agent HQ (Axum).
-//! REST: /api/state /api/agents /api/alerts /api/history /api/health
+//! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks
 //! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze
 //! Statis: folder web/ (kantor 3D). Penyimpanan: SQLite (snapshot & alert).
 //!
@@ -443,6 +443,32 @@ async fn alert_snooze(
     StatusCode::OK
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct Stock {
+    symbol: String,
+    #[serde(default)]
+    name: String,
+    shares: f64,
+    price: f64,
+    #[serde(default = "default_stock_currency")]
+    currency: String,
+}
+fn default_stock_currency() -> String { "IDR".into() }
+
+/// Saham: portofolio dari file milik user di {data_dir}/stocks.json.
+/// File tidak ada = portofolio kosong (bukan data contoh). File rusak = error jujur, bukan angka palsu.
+async fn get_stocks(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let path = format!("{}/stocks.json", st.data_dir);
+    let txt = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return Json(serde_json::json!({ "stocks": [], "source": "none", "error": null })),
+    };
+    match serde_json::from_str::<Vec<Stock>>(&txt) {
+        Ok(stocks) => Json(serde_json::json!({ "stocks": stocks, "source": "file", "error": null })),
+        Err(e) => Json(serde_json::json!({ "stocks": [], "source": "file", "error": format!("stocks.json tidak bisa dibaca: {e}") })),
+    }
+}
+
 #[derive(Deserialize)]
 struct HistoryQ {
     days: Option<i64>,
@@ -616,6 +642,7 @@ async fn main() {
             }),
         )
         .route("/api/history", get(get_history))
+        .route("/api/stocks", get(get_stocks))
         .route(
             "/api/health",
             get(|| async {

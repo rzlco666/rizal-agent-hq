@@ -98,6 +98,35 @@ cargo test --workspace                # 13+ tests
   (default http://localhost:8900/, Ctrl+C untuk berhenti); `./scripts/install.sh` tetap untuk
   service permanen. Variabel env yang tersedia didokumentasikan di `.env.example`.
 
+## ✨ Lanjutan: Studio terisi, Saham dari file, Performance lengkap, mobile, alert Muse
+
+- **Studio terisi**: tombol `Studio` sekarang membuka panel Studio berisi kartu agent utama
+  (OMP, Cursor, Muse) dari data live — peran, status, aktivitas, jumlah tugas selesai/total,
+  request, token, dan biaya — dengan tombol `Buka detail` ke drawer. Sebelumnya Studio hanya
+  menggeser kamera ke ruangan Muse tanpa konten apa pun.
+- **Saham terisi — dari file kamu, bukan contoh**: endpoint baru `GET /api/stocks` membaca
+  `stocks.json` di folder data HQ. Bila file ada, panel Saham menampilkan tabel posisi dan
+  total portofolio (lembar × harga file). Bila file tidak ada, panel tetap kosong yang jujur
+  dengan format file dan dokumentasi di `docs/SAHAM.md`. Tidak ada harga live dan tidak ada
+  angka contoh. Pendapat Melo: ini cara terbaik sekarang, karena harga saham adalah data
+  uang — harga live baru layak ditambahkan setelah kamu memilih sumber kuotasinya.
+- **Performance lengkap**: workspace kini diawali ringkasan semua agent (total dan selesai,
+  plus tabel mini per agent yang bisa diklik untuk membuka workspace agent itu), dan baris
+  agent menampilkan request, token, dan biaya TUNAI/bayangan. Jadi workspace tidak lagi
+  terlihat kosong hanya karena agent yang terpilih saat itu kebetulan 0 tugas. Default
+  agent juga sudah diperbaiki: agent dengan tugas terbanyak dulu.
+- **Mobile / iPhone**: header kini melipat di layar sempit — nav menjadi satu baris penuh
+  yang bisa di-scroll horizontal, bukan terpotong seperti di screenshot sebelumnya; hint
+  yang terpotong disembunyikan di layar kecil; overlay dan tabel diberi scroll horizontal
+  dan padding yang lebih kecil.
+- **Alert "Muse butuh kamu" diperbaiki**: sebelumnya status heartbeat Muse diabaikan,
+  sehingga Muse tidak pernah bisa berstatus Menunggu Rizal dan alert-nya tidak pernah
+  hidup. Sekarang heartbeat dengan status `menunggu-rizal` (dan variannya) yang masih
+  segar (< 2 jam) benar-benar membuat Muse berstatus Menunggu Rizal dan memicu alert
+  Perlu Action di panel "Butuh Rizal" + badge. Skrip `scripts/post-muse-waiting.sh`
+  mengirim heartbeat itu; detail lengkap dan keputusan yang masih dibutuhkan ada di
+  `docs/MUSE-URGENT.md`.
+
 ## ⚙️ Configuration (all via env, no mandatory files)
 
 | Env | Default | Meaning |

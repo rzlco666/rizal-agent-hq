@@ -239,6 +239,28 @@
   ::-webkit-scrollbar-thumb{background:#c6cedb;border-radius:99px;border:2px solid transparent;background-clip:content-box}
   ::-webkit-scrollbar-thumb:hover{background:#8fa1ba;border:2px solid transparent;background-clip:content-box}
 
+  /* ---------- mobile / iPhone: header tidak lagi terpotong, nav bisa di-scroll ---------- */
+  @media (max-width:900px){
+    header{flex-wrap:wrap;gap:10px;padding:8px 12px}
+    .brand{flex:1 1 auto}
+    .pillnav{order:3;flex:1 1 100%;min-width:0;overflow-x:auto}
+    .pillnav button{padding:5px 10px;font-size:12px}
+    .hstatus{order:2;flex-wrap:wrap;gap:8px}
+    #wsState{display:none}
+    #searchBox{width:130px}
+    #hint{display:none}
+    .overlay{padding:12px}
+    .tableWrap{overflow-x:auto}
+    table.mtab{min-width:560px}
+    .perfTop{flex-direction:column;align-items:stretch}
+    .perfTop select,.perfTop input{width:100%}
+    .perfDonut{flex-direction:column;align-items:flex-start}
+    #stageCtl{max-width:calc(100% - 16px)}
+  }
+  @media (max-width:480px){
+    .kpi{grid-template-columns:1fr}
+    #searchBox{width:110px}
+  }
   @media (max-width:1180px){
     #main{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "dock"}
     aside#panel{position:fixed;top:64px;right:12px;width:350px;max-width:92vw;max-height:calc(100vh - 84px);z-index:50;
@@ -385,9 +407,13 @@
     <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="perfT">Performance Workspace</span></h2><span class="mut small" data-i18n="perfSub">Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
     <div id="perfBody"></div>
   </div>
+  <div id="studioOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="studioT">Studio</span></h2><span class="mut small" data-i18n="studioSub">Agent utama yang sedang bekerja di HQ — dari data live, bukan tim contoh</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="studioBody"></div>
+  </div>
   <div id="sahamOverlay" class="overlay">
     <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="sahamT">Saham</span></h2><span class="mut small" data-i18n="sahamSub">Modul ini belum dihubungkan ke sumber data apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
-    <div class="pcard"><p>Belum ada data saham yang ditampilkan, dan tidak ada angka contoh di sini — HQ tidak menampilkan harga, portofolio, atau rekomendasi palsu.</p><p class="mut small">Untuk mengaktifkan modul ini, beri tahu Melo sumbernya: mis. file portofolio, API broker, atau Google Sheet. Setelah sumber dipilih, modul ini akan membaca data itu saja.</p></div>
+    <div id="sahamBody"></div>
   </div>
   <div id="knowOverlay" class="overlay">
     <div class="ovHead"><h2><svg class="ic"><use href="#i-list"/></svg><span data-i18n="knowT">Pengetahuan</span></h2><span class="mut small" data-i18n="knowSub">Modul ini belum dihubungkan ke sumber dokumen apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
