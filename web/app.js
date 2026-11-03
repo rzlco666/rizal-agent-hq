@@ -233,7 +233,7 @@ function renderPerf(s) {
   const agents = s.agents;
   if (!agents.length) { el.innerHTML = '<p class="mut">Belum ada agent terbaca.</p>'; return; }
   let aid = state.perfAgent;
-  if (!agents.find(a => a.id === aid)) aid = state.selected && agents.find(a => a.id === state.selected) ? state.selected : (agents.find(a => a.status === 'bekerja') || agents[0]).id;
+  if (!agents.find(a => a.id === aid)) { const byTasks = agents.map(a => [a, s.tasks.filter(t => t.agent_id === a.id).length]).sort((x, y) => y[1] - x[1]); aid = state.selected && agents.find(a => a.id === state.selected) ? state.selected : (byTasks[0][1] > 0 ? byTasks[0][0].id : (agents.find(a => a.status === bekerja) || agents[0]).id); }
   state.perfAgent = aid;
   const a = agentById(aid);
   const q = (state.perfQuery || '').toLowerCase();
