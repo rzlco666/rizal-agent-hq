@@ -915,10 +915,24 @@ fn src_cursor(_state: &mut CollectState, pr: &Probes) -> SourceOut {
 /// Status Muse dari heartbeat: status eksplisit "menunggu" mengalahkan usia heartbeat.
 /// Sebelum perbaikan ini, status heartbeat diabaikan total — Muse tidak pernah bisa
 /// berstatus MenungguRizal, sehingga alert "Muse menunggu kamu" tidak pernah bisa hidup.
-fn muse_status_from_heartbeat(at: i64, status_str: &str, now: i64, muse_online: Option<bool>) -> (Status, bool) {
+fn muse_status_from_heartbeat(
+    at: i64,
+    status_str: &str,
+    now: i64,
+    muse_online: Option<bool>,
+) -> (Status, bool) {
     let waiting = matches!(
         status_str.trim().to_lowercase().as_str(),
-        "menunggu-rizal" | "menunggu_rizal" | "menunggu" | "waiting" | "needs-action" | "needs_action" | "butuh-rizal" | "butuh_action" | "perlu-action" | "perlu_action"
+        "menunggu-rizal"
+            | "menunggu_rizal"
+            | "menunggu"
+            | "waiting"
+            | "needs-action"
+            | "needs_action"
+            | "butuh-rizal"
+            | "butuh_action"
+            | "perlu-action"
+            | "perlu_action"
     );
     if waiting && now - at < 2 * 3600 * 1000 {
         return (Status::MenungguRizal, true);
@@ -972,13 +986,29 @@ fn src_claude(state: &mut CollectState, pr: &Probes) -> SourceOut {
                 (Status::MenungguRizal, redact(&task), 1)
             } else if st2 == Status::Berpikir {
                 let menit = ((now - at) / 60000).max(1);
-                (Status::Berpikir, format!("Terakhir melapor {menit} menit lalu: {}", redact(&task)), 1)
+                (
+                    Status::Berpikir,
+                    format!("Terakhir melapor {menit} menit lalu: {}", redact(&task)),
+                    1,
+                )
             } else if st2 == Status::Bekerja {
                 (Status::Bekerja, redact(&task), 1)
             } else if st2 == Status::Santai {
-                (Status::Santai, "Muse terhubung lewat Tailscale, belum ada laporan tugas baru".to_string(), 0)
+                (
+                    Status::Santai,
+                    "Muse terhubung lewat Tailscale, belum ada laporan tugas baru".to_string(),
+                    0,
+                )
             } else {
-                (Status::Offline, if pr.muse_online == Some(false) { "Muse tidak terhubung (peer Tailscale offline)".to_string() } else { "Muse belum melapor".to_string() }, 0)
+                (
+                    Status::Offline,
+                    if pr.muse_online == Some(false) {
+                        "Muse tidak terhubung (peer Tailscale offline)".to_string()
+                    } else {
+                        "Muse belum melapor".to_string()
+                    },
+                    0,
+                )
             }
         }
         None => {
@@ -1235,10 +1265,19 @@ mod muse_waiting_tests {
     fn muse_waiting_status_beats_age() {
         let now = 1_000_000_000_000i64;
         // Heartbeat 5 menit lalu dengan status menunggu -> MenungguRizal, bukan Bekerja
-        assert_eq!(muse_status_from_heartbeat(now - 5 * 60 * 1000, "menunggu-rizal", now, Some(true)).0, Status::MenungguRizal);
+        assert_eq!(
+            muse_status_from_heartbeat(now - 5 * 60 * 1000, "menunggu-rizal", now, Some(true)).0,
+            Status::MenungguRizal
+        );
         // Status bekerja biasa tetap Bekerja
-        assert_eq!(muse_status_from_heartbeat(now - 5 * 60 * 1000, "bekerja", now, Some(true)).0, Status::Bekerja);
+        assert_eq!(
+            muse_status_from_heartbeat(now - 5 * 60 * 1000, "bekerja", now, Some(true)).0,
+            Status::Bekerja
+        );
         // Status menunggu yang sudah >2 jam tidak lagi dianggap menunggu
-        assert_eq!(muse_status_from_heartbeat(now - 3 * 3600 * 1000, "menunggu-rizal", now, Some(true)).0, Status::Santai);
+        assert_eq!(
+            muse_status_from_heartbeat(now - 3 * 3600 * 1000, "menunggu-rizal", now, Some(true)).0,
+            Status::Santai
+        );
     }
 }
