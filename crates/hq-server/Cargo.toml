@@ -16,5 +16,6 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 axum = { version = "0.8", features = ["ws"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 tower-http = { version = "0.7", features = ["fs"] }

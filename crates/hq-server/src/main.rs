@@ -1,6 +1,7 @@
 //! hq-server — Rizal Agent HQ (Axum).
 //! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks
-//! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze
+//! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze,
+//! POST /api/stocks/refresh (harga live, hormati gerbang harian)
 //! Statis: folder web/ (kantor 3D). Penyimpanan: SQLite (snapshot & alert).
 //!
 //! Env: HQ_PORT (8900), HQ_BIND (127.0.0.1), HQ_INTERVAL (30 dtk), HQ_DATA (data/), HQ_WEB (web/)
@@ -15,6 +16,8 @@ use axum::{
 use hq_core::timefmt::now_ms;
 use hq_core::*;
 use serde::Deserialize;
+
+mod stocks_price;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -33,6 +36,8 @@ struct AppState {
     llm_tx: Option<std::sync::mpsc::Sender<LlmJob>>,
     /// State alert yang dipilih Rizal (ditangani/ditunda), dipulihkan dari SQLite.
     alert_saved: std::sync::Mutex<HashMap<String, (String, Option<i64>)>>,
+    /// Harga live saham: klien HTTP, kunci env, cache, dan kunci serialisasi.
+    stocks: Arc<stocks_price::StocksHandle>,
 }
 
 /// Satu pekerjaan perapi LLM (K2-C lapisan 4).
@@ -443,30 +448,30 @@ async fn alert_snooze(
     StatusCode::OK
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-struct Stock {
-    symbol: String,
-    #[serde(default)]
-    name: String,
-    shares: f64,
-    price: f64,
-    #[serde(default = "default_stock_currency")]
-    currency: String,
-}
-fn default_stock_currency() -> String { "IDR".into() }
-
 /// Saham: portofolio dari file milik user di {data_dir}/stocks.json.
 /// File tidak ada = portofolio kosong (bukan data contoh). File rusak = error jujur, bukan angka palsu.
+/// `quotes` hanya kolom tampilan harga live — harga file & total portofolio tidak berubah.
 async fn get_stocks(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let path = format!("{}/stocks.json", st.data_dir);
-    let txt = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(_) => return Json(serde_json::json!({ "stocks": [], "source": "none", "error": null })),
+    let (stocks, source, error) = match stocks_price::read_stocks(&path) {
+        stocks_price::StocksFile::Missing => (vec![], "none", None),
+        stocks_price::StocksFile::Invalid(e) => (vec![], "file", Some(e)),
+        stocks_price::StocksFile::Ok(v) => (v, "file", None),
     };
-    match serde_json::from_str::<Vec<Stock>>(&txt) {
-        Ok(stocks) => Json(serde_json::json!({ "stocks": stocks, "source": "file", "error": null })),
-        Err(e) => Json(serde_json::json!({ "stocks": [], "source": "file", "error": format!("stocks.json tidak bisa dibaca: {e}") })),
-    }
+    let (quotes, updated) = st.stocks.quotes_view();
+    Json(serde_json::json!({
+        "stocks": stocks,
+        "source": source,
+        "error": error,
+        "quotes": quotes,
+        "quotes_updated_at": updated,
+    }))
+}
+
+/// POST /api/stocks/refresh — mencoba ambil harga sekarang juga, tetap menaati
+/// gerbang sekali-sehari, akhir pekan, dan kuota. Balasan: {refreshed, reason}.
+async fn post_stocks_refresh(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(st.stocks.trigger(true).await)
 }
 
 #[derive(Deserialize)]
@@ -608,9 +613,11 @@ async fn main() {
         llm_pending,
         llm_tx,
         alert_saved: std::sync::Mutex::new(alert_saved_map),
+        stocks: stocks_price::StocksHandle::from_env(&data_dir),
     });
 
     refresh(&st).await;
+    stocks_price::spawn_scheduler(st.stocks.clone());
     {
         let st2 = st.clone();
         tokio::spawn(async move {
@@ -643,6 +650,7 @@ async fn main() {
         )
         .route("/api/history", get(get_history))
         .route("/api/stocks", get(get_stocks))
+        .route("/api/stocks/refresh", post(post_stocks_refresh))
         .route(
             "/api/health",
             get(|| async {
