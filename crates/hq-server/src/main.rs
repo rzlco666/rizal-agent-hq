@@ -1,5 +1,6 @@
 //! hq-server — Rizal Agent HQ (Axum).
 //! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks /api/portfolio
+//! /api/knowledge/* (pencarian + halaman + sync + promote) /api/memory* (B.5)
 //! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze,
 //! POST /api/stocks/refresh (harga live, hormati gerbang harian)
 //! Statis: folder web/ (kantor 3D). Penyimpanan: SQLite (snapshot & alert).
@@ -17,6 +18,7 @@ use hq_core::timefmt::{now_ms, wib_date};
 use hq_core::*;
 use serde::Deserialize;
 
+mod notion_knowledge;
 mod portfolio;
 mod stocks_price;
 use std::collections::{HashMap, HashSet};
@@ -39,6 +41,9 @@ struct AppState {
     alert_saved: std::sync::Mutex<HashMap<String, (String, Option<i64>)>>,
     /// Harga live saham: klien HTTP, kunci env, cache, dan kunci serialisasi.
     stocks: Arc<stocks_price::StocksHandle>,
+    /// Pengetahuan dari Notion: cermin sync + memori B.5 (hanya candidate
+    /// yang ditulis sync; trusted hanya lewat promosi manusia).
+    notion: Arc<notion_knowledge::NotionHandle>,
 }
 
 /// Satu pekerjaan perapi LLM (K2-C lapisan 4).
@@ -226,6 +231,7 @@ fn db_init(path: &str) -> rusqlite::Connection {
     )
     .expect("skema SQLite");
     portfolio::ensure_portfolio_schema(&conn);
+    notion_knowledge::ensure_notion_schema(&conn);
     conn
 }
 
@@ -950,10 +956,12 @@ async fn main() {
         llm_tx,
         alert_saved: std::sync::Mutex::new(alert_saved_map),
         stocks: stocks_price::StocksHandle::from_env(&data_dir),
+        notion: notion_knowledge::NotionHandle::from_env(&data_dir),
     });
 
     refresh(&st).await;
     stocks_price::spawn_scheduler(st.stocks.clone());
+    notion_knowledge::spawn_scheduler(st.notion.clone());
     portfolio::spawn_portfolio_scheduler(st.clone());
     {
         let st2 = st.clone();
@@ -997,6 +1005,50 @@ async fn main() {
         .route("/api/portfolio/history", get(get_portfolio_history))
         .route("/api/portfolio/snapshot", post(post_portfolio_snapshot))
         .route("/api/portfolio/config", post(post_portfolio_config))
+        .route(
+            "/api/knowledge/search",
+            get(notion_knowledge::get_knowledge_search),
+        )
+        .route(
+            "/api/knowledge/pages",
+            get(notion_knowledge::get_knowledge_pages),
+        )
+        .route(
+            "/api/knowledge/page/{id}",
+            get(notion_knowledge::get_knowledge_page),
+        )
+        .route(
+            "/api/knowledge/sync/status",
+            get(notion_knowledge::get_knowledge_sync_status),
+        )
+        .route(
+            "/api/knowledge/sync",
+            post(notion_knowledge::post_knowledge_sync),
+        )
+        .route(
+            "/api/knowledge/promote",
+            post(notion_knowledge::post_knowledge_promote),
+        )
+        .route(
+            "/api/memory",
+            get(notion_knowledge::get_memory).post(notion_knowledge::post_memory),
+        )
+        .route(
+            "/api/memory/{id}/promote",
+            post(notion_knowledge::post_memory_promote),
+        )
+        .route(
+            "/api/memory/{id}/reject",
+            post(notion_knowledge::post_memory_reject),
+        )
+        .route(
+            "/api/memory/{id}/correct",
+            post(notion_knowledge::post_memory_correct),
+        )
+        .route(
+            "/api/memory/{id}/delete",
+            post(notion_knowledge::post_memory_delete),
+        )
         .route(
             "/api/health",
             get(|| async {
