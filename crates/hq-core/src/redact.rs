@@ -50,19 +50,28 @@ fn secret_like_assignment(value: &str) -> bool {
 }
 
 /// Nilai bentuk lepas (`--api-key <nilai>`, `token <nilai>`) tampak seperti
-/// rahasia bila panjang >= 12 DAN mengandung digit DAN huruf besar, dan
-/// hanya berisi karakter token (alnum + `_-.+/=`). Prosa gagal di minimal
-/// satu syarat: "token harus" (5 huruf), "token Telegram" (8 huruf, tanpa
-/// digit), "token diperlakukan" (12 huruf, tanpa digit), "password hanya"
-/// (5 huruf), "secret (siapa" (mengandung `(`).
+/// rahasia bila panjang >= 12 DAN mengandung digit, dan hanya berisi
+/// karakter token (alnum + `_-.+/=`). Syarat huruf besar DIHAPUS (ronde
+/// perbaikan PR #11, F1): kunci hex huruf-kecil seperti `abcdef1234567890`
+/// adalah bentuk kunci API yang lazim dan harus tertangkap; semua contoh
+/// prosa tetap gugur oleh syarat lain: "token harus" (5 huruf),
+/// "token Telegram" (8 huruf, tanpa digit), "token diperlakukan" (12 huruf,
+/// tanpa digit), "password hanya" (5 huruf), "secret (siapa" (mengandung
+/// `(`). Tanda baca di ujung nilai (koma/titik-koma setelah nilai dalam
+/// kalimat) dipangkas dulu sebelum dinilai, supaya `AbCdEf1234567890,`
+/// tetap tertangkap.
 fn secret_like_bare(value: &str) -> bool {
+    // Pangkas tanda baca di ujung nilai: regex menangkap nilai sampai
+    // spasi/kutip, jadi `token AbCdEf1234567890,` ikut menangkap koma —
+    // tanpa pemangkasan, `.all(charset)` gagal pada `,` dan rahasia lolos.
+    let value =
+        value.trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || "_-.+/=".contains(c)));
     let len = value.chars().count();
     len >= 12
         && value
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "_-.+/=".contains(c))
         && value.chars().any(|c| c.is_ascii_digit())
-        && value.chars().any(|c| c.is_ascii_uppercase())
 }
 
 /// Nilai sesudah `Bearer` tampak seperti rahasia bila panjang >= 10 DAN
@@ -173,6 +182,7 @@ mod tests {
     #[test]
     fn sensor_token_gh_dan_bearer() {
         assert!(!redact("ghp_1234567890abcdefghij").contains("1234567890abcdefghij"));
+        assert!(!redact("gho_1234567890abcdefghij").contains("1234567890abcdefghij"));
         assert!(!redact("Authorization: Bearer abc.def.ghi").contains("abc.def.ghi"));
     }
 
@@ -182,6 +192,8 @@ mod tests {
         let rahasia = [
             "token=AbCdEf1234567890",
             "api-key crsr_1234567890abcdef",
+            "api-key gho_1234567890abcdef",
+            "api-key github_pat_1234567890abcdef",
             "api_key=AKIA123456789012",
             "token=sk-ant-abc1234567890",
             "secret=ghp_1234567890abcdef1234567890abcdef1234",
@@ -302,5 +314,21 @@ mod tests {
             assert!(!contains_secret(s), "sintaks terkarantina: {s}");
         }
         assert!(contains_secret("token=AbCdEf1234567890"));
+    }
+
+    #[test]
+    fn gerbang_rahasia_huruf_kecil_dan_koma() {
+        // F1 (ronde perbaikan PR #11): rahasia huruf-kecil tanpa huruf
+        // besar HARUS tertangkap; koma/titik-koma di ujung nilai tidak
+        // boleh meloloskan.
+        assert!(contains_secret("token abcdef1234567890"));
+        assert!(contains_secret("--api-key abcdef1234567890abcdef"));
+        assert!(contains_secret("token AbCdEf1234567890,"));
+        assert!(contains_secret("secret abcdef1234567890;"));
+        // Prosa tetap lolos (alasan: panjang < 12 atau tanpa digit).
+        assert!(!contains_secret("token harus"));
+        assert!(!contains_secret("token Telegram"));
+        assert!(!contains_secret("token diperlakukan"));
+        assert!(!contains_secret("password hanya"));
     }
 }
