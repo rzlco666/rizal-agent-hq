@@ -26,6 +26,7 @@ mod stocks_price;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tower_http::compression::CompressionLayer;
 use tower_http::services::ServeDir;
 
 struct AppState {
@@ -50,6 +51,17 @@ struct AppState {
     started_at: std::time::Instant,
     /// Hasil ukur siklus refresh terakhir (durasi per kolektor).
     last_perf: RwLock<PerfSnapshot>,
+    /// Drop antrean LLM karena cap kedalaman (B2) + anggaran panggilan
+    /// per jam: (awal jam epoch ms, panggilan jam ini).
+    llm_dropped: Arc<std::sync::atomic::AtomicU64>,
+    llm_budget: Arc<std::sync::Mutex<(i64, u32)>>,
+    /// Cap B2 (env HQ_LLM_MAX_PENDING / HQ_LLM_MAX_PER_HOUR).
+    llm_max_pending: usize,
+    llm_max_per_hour: u32,
+    /// Penghitung siklus refresh (B6, untuk /api/health).
+    refresh_count: std::sync::atomic::AtomicU64,
+    refresh_last_at_ms: std::sync::atomic::AtomicU64,
+    refresh_last_total_ms: std::sync::atomic::AtomicU64,
 }
 
 /// Hasil ukur satu siklus `refresh()` — diisi tiap siklus, dibaca /api/health.
@@ -88,6 +100,30 @@ fn hash_text(a: &str, b: &str) -> u64 {
         h = h.wrapping_mul(0x100000001b3);
     }
     h
+}
+
+/// Anggaran panggilan LLM per jam (murni, bisa dites): jendela jam kalender.
+/// Kembalikan true + catat pemakaian bila masih ada kuota jam ini.
+fn llm_budget_allow(state: &mut (i64, u32), now: i64, max_per_hour: u32) -> bool {
+    let hour = now / 3_600_000 * 3_600_000;
+    if state.0 != hour {
+        *state = (hour, 0);
+    }
+    if state.1 >= max_per_hour {
+        return false;
+    }
+    state.1 += 1;
+    true
+}
+
+/// Panggilan LLM jam ini (0 bila jendela sudah berganti).
+fn llm_calls_this_hour(state: (i64, u32), now: i64) -> u32 {
+    let hour = now / 3_600_000 * 3_600_000;
+    if state.0 == hour {
+        state.1
+    } else {
+        0
+    }
 }
 
 /// Jalankan `omp -p` satu prompt; None bila gagal/timeout (maks 45 detik).
@@ -255,7 +291,10 @@ fn env_or(k: &str, d: &str) -> String {
 fn db_init(path: &str) -> rusqlite::Connection {
     let conn = rusqlite::Connection::open(path).expect("buka SQLite");
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS snapshots(
+        // B3: WAL + busy_timeout + synchronous NORMAL — baca tidak lagi
+        // memblokir tulis snapshot tiap siklus (sebelumnya journal_mode=delete).
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;
+         CREATE TABLE IF NOT EXISTS snapshots(
             at INTEGER PRIMARY KEY, requests INTEGER, input INTEGER, output INTEGER,
             cache INTEGER, cash REAL, shadow REAL, active_agents INTEGER);
          CREATE TABLE IF NOT EXISTS alert_log(
@@ -275,10 +314,33 @@ async fn refresh(st: &AppState) {
     let t_total = std::time::Instant::now();
     let prev_agents = st.snap.read().await.agents.clone();
     let t_collect = std::time::Instant::now();
-    let mut collect = st.collect.write().await;
-    let (mut snap, timings) = hq_collect::collect_snapshot(&mut collect);
+    // B1: kolektor sinkron (subprocess git/omp/docker/...) jalan di blocking
+    // thread, BUKAN worker tokio. State dipindah keluar dari RwLock (take),
+    // dikembalikan sesudahnya; lock tidak dipegang selama koleksi berjalan.
+    // Bila blocking task panik: pulihkan state kosong + lewati siklus ini
+    // (snapshot lama tetap tampil, bukan dikosongkan).
+    let state = {
+        let mut collect = st.collect.write().await;
+        std::mem::take(&mut *collect)
+    };
+    let (mut snap, timings) = match tokio::task::spawn_blocking(move || {
+        let mut s = state;
+        let (snap, timings) = hq_collect::collect_snapshot(&mut s);
+        (snap, timings, s)
+    })
+    .await
+    {
+        Ok((snap, timings, s)) => {
+            *st.collect.write().await = s;
+            (snap, timings)
+        }
+        Err(e) => {
+            *st.collect.write().await = hq_collect::CollectState::default();
+            println!("[perf] refresh collect GAGAL (blocking task panik): {e}");
+            return;
+        }
+    };
     let collect_ms = t_collect.elapsed().as_millis() as u64;
-    drop(collect);
 
     let t_alert = std::time::Instant::now();
     let evaluated = hq_alert::evaluate(&snap, &prev_agents);
@@ -331,12 +393,41 @@ async fn refresh(st: &AppState) {
             match cached {
                 Some((ch, text)) if ch == h => t.summary = Some(text),
                 _ => {
+                    // B2: cap kedalaman antrean — bila penuh, job dibuang
+                    // (bukan menumpuk tanpa batas); dihitung + dilog.
+                    let pending_len = st.llm_pending.lock().map(|p| p.len()).unwrap_or(0);
+                    if pending_len >= st.llm_max_pending {
+                        st.llm_dropped
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        println!(
+                            "[llm] drop task={} pending={} max_pending={}",
+                            t.id, pending_len, st.llm_max_pending
+                        );
+                        continue;
+                    }
                     let fresh = st
                         .llm_pending
                         .lock()
                         .map(|mut p| p.insert(t.id.clone()))
                         .unwrap_or(false);
                     if fresh {
+                        // B2: anggaran panggilan per jam — dicadangkan saat
+                        // enqueue; habis = job dilepas dari pending + dilewat.
+                        let allowed = st
+                            .llm_budget
+                            .lock()
+                            .map(|mut b| llm_budget_allow(&mut b, now_ms(), st.llm_max_per_hour))
+                            .unwrap_or(false);
+                        if !allowed {
+                            if let Ok(mut p) = st.llm_pending.lock() {
+                                p.remove(&t.id);
+                            }
+                            println!(
+                                "[llm] skip task={} budget jam ini habis (max_per_hour={})",
+                                t.id, st.llm_max_per_hour
+                            );
+                            continue;
+                        }
                         let _ = tx.send(LlmJob {
                             task_id: t.id.clone(),
                             hash: h,
@@ -395,6 +486,15 @@ async fn refresh(st: &AppState) {
     }
     let db_ms = t_db.elapsed().as_millis() as u64;
     let total_ms = t_total.elapsed().as_millis() as u64;
+    // B6: hitung siklus refresh untuk /api/health.
+    st.refresh_count
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    st.refresh_last_at_ms.store(
+        snap.generated_at.max(0) as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    st.refresh_last_total_ms
+        .store(total_ms, std::sync::atomic::Ordering::Relaxed);
     *st.last_perf.write().await = PerfSnapshot {
         total_ms,
         collect_ms,
@@ -558,6 +658,44 @@ async fn post_stocks_refresh(State(st): State<Arc<AppState>>) -> Json<serde_json
 #[derive(Deserialize)]
 struct HistoryQ {
     days: Option<i64>,
+    /// B4: batas baris (default 2000, maks 10000) + offset paginasi.
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// Satu halaman riwayat + total baris dalam jendela (B4). Jendela = baris
+/// TERBARU (`ORDER BY at DESC LIMIT/OFFSET`), lalu dibalik ke ASC di Rust
+/// supaya bentuk respons tidak berubah.
+fn history_page(
+    db: &rusqlite::Connection,
+    since: i64,
+    limit: i64,
+    offset: i64,
+) -> (Vec<serde_json::Value>, i64) {
+    let total: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM snapshots WHERE at>=?1",
+            rusqlite::params![since],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let mut rows = vec![];
+    if let Ok(mut stmt) = db.prepare(
+        "SELECT at,requests,input,output,cache,cash,shadow,active_agents FROM snapshots WHERE at>=?1 ORDER BY at DESC LIMIT ?2 OFFSET ?3",
+    ) {
+        if let Ok(iter) = stmt.query_map(rusqlite::params![since, limit, offset], |r| {
+            Ok(serde_json::json!({
+                "at": r.get::<_, i64>(0)?, "requests": r.get::<_, i64>(1)?,
+                "input": r.get::<_, i64>(2)?, "output": r.get::<_, i64>(3)?,
+                "cache": r.get::<_, i64>(4)?, "cash": r.get::<_, f64>(5)?,
+                "shadow": r.get::<_, f64>(6)?, "activeAgents": r.get::<_, i64>(7)?,
+            }))
+        }) {
+            rows = iter.flatten().collect();
+        }
+    }
+    rows.reverse();
+    (rows, total)
 }
 
 async fn get_history(
@@ -566,22 +704,14 @@ async fn get_history(
 ) -> Json<serde_json::Value> {
     let days = q.days.unwrap_or(7);
     let since = now_ms() - days * 86400 * 1000;
-    let mut rows = vec![];
-    if let Ok(db) = st.db.lock() {
-        if let Ok(mut stmt) = db.prepare("SELECT at,requests,input,output,cache,cash,shadow,active_agents FROM snapshots WHERE at>=?1 ORDER BY at") {
-            if let Ok(iter) = stmt.query_map(rusqlite::params![since], |r| {
-                Ok(serde_json::json!({
-                    "at": r.get::<_, i64>(0)?, "requests": r.get::<_, i64>(1)?,
-                    "input": r.get::<_, i64>(2)?, "output": r.get::<_, i64>(3)?,
-                    "cache": r.get::<_, i64>(4)?, "cash": r.get::<_, f64>(5)?,
-                    "shadow": r.get::<_, f64>(6)?, "activeAgents": r.get::<_, i64>(7)?,
-                }))
-            }) {
-                rows = iter.flatten().collect();
-            }
-        }
-    }
-    Json(serde_json::json!({ "history": rows }))
+    let limit = q.limit.unwrap_or(2000).clamp(1, 10000);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let (rows, total) = if let Ok(db) = st.db.lock() {
+        history_page(&db, since, limit, offset)
+    } else {
+        (vec![], 0)
+    };
+    Json(serde_json::json!({ "history": rows, "total": total, "limit": limit, "offset": offset }))
 }
 
 /// Baca VmRSS + VmHWM (puncak) proses sendiri dari /proc/self/status (kB -> MB).
@@ -643,6 +773,21 @@ async fn get_health(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> 
     let (rss_mb, peak_mb) = read_self_mem();
     let perf = st.last_perf.read().await.clone();
     let disk_percent = st.snap.read().await.env.disk_percent;
+    // B2/B6: antrean + anggaran LLM, dan penghitung siklus refresh.
+    let llm_pending = st.llm_pending.lock().map(|p| p.len()).unwrap_or(0);
+    let llm_calls = st
+        .llm_budget
+        .lock()
+        .map(|b| llm_calls_this_hour(*b, now))
+        .unwrap_or(0);
+    let llm_dropped = st.llm_dropped.load(std::sync::atomic::Ordering::Relaxed);
+    let refresh_count = st.refresh_count.load(std::sync::atomic::Ordering::Relaxed);
+    let refresh_last_at_ms = st
+        .refresh_last_at_ms
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let refresh_last_total_ms = st
+        .refresh_last_total_ms
+        .load(std::sync::atomic::Ordering::Relaxed);
     Json(serde_json::json!({
         "ok": true,
         "at": now,
@@ -680,6 +825,17 @@ async fn get_health(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> 
             "sources_ms": perf.sources_ms,
             "alert_ms": perf.alert_ms,
             "db_ms": perf.db_ms,
+        },
+        "llm": {
+            "pending": llm_pending,
+            "calls_this_hour": llm_calls,
+            "max_per_hour": st.llm_max_per_hour,
+            "dropped": llm_dropped,
+        },
+        "refresh": {
+            "count": refresh_count,
+            "last_at_ms": refresh_last_at_ms,
+            "last_total_ms": refresh_last_total_ms,
         },
     }))
 }
@@ -1120,6 +1276,9 @@ async fn main() {
         Some(txl)
     };
     let (tx, _rx0) = tokio::sync::broadcast::channel::<String>(16);
+    // B2: cap antrean + anggaran LLM (env, default 8 antrean / 20 per jam).
+    let llm_max_pending: usize = env_or("HQ_LLM_MAX_PENDING", "8").parse().unwrap_or(8);
+    let llm_max_per_hour: u32 = env_or("HQ_LLM_MAX_PER_HOUR", "20").parse().unwrap_or(20);
     let collect_state = hq_collect::CollectState {
         heartbeat_dir: format!("{data_dir}/heartbeats"),
         ..Default::default()
@@ -1134,6 +1293,13 @@ async fn main() {
         llm_cache,
         llm_pending,
         llm_tx,
+        llm_dropped: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        llm_budget: Arc::new(std::sync::Mutex::new((0, 0))),
+        llm_max_pending,
+        llm_max_per_hour,
+        refresh_count: std::sync::atomic::AtomicU64::new(0),
+        refresh_last_at_ms: std::sync::atomic::AtomicU64::new(0),
+        refresh_last_total_ms: std::sync::atomic::AtomicU64::new(0),
         alert_saved: std::sync::Mutex::new(alert_saved_map),
         stocks: stocks_price::StocksHandle::from_env(&data_dir),
         notion: notion_knowledge::NotionHandle::from_env(&data_dir),
@@ -1149,6 +1315,9 @@ async fn main() {
         let st2 = st.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval.max(10)));
+            // B1: siklus yang tertinggal DILEWATI (Skip), bukan ditumpuk
+            // (default Burst akan mengejar ketertinggalan sekaligus).
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tick.tick().await;
                 refresh(&st2).await;
@@ -1237,7 +1406,9 @@ async fn main() {
         .route("/api/alerts/{id}/ack", post(alert_ack))
         .route("/api/alerts/{id}/snooze", post(alert_snooze))
         .fallback_service(ServeDir::new(web_dir.clone()))
-        .with_state(st);
+        .with_state(st)
+        // B5: kompresi gzip untuk semua respons (termasuk aset statik ServeDir).
+        .layer(CompressionLayer::new());
 
     let listener = tokio::net::TcpListener::bind(format!("{bind}:{port}"))
         .await
@@ -1276,5 +1447,66 @@ mod tests {
             Some(1_794_000_000_000)
         );
         assert_eq!(wib_iso_to_ms("bukan-iso"), None);
+    }
+
+    #[test]
+    fn llm_budget_allow_membatasi_per_jam_dan_reset_tiap_jam() {
+        // Jam 10:00 UTC = 10 * 3_600_000 ms.
+        let h10 = 10 * 3_600_000i64;
+        let mut b = (0, 0);
+        assert!(llm_budget_allow(&mut b, h10, 2));
+        assert!(llm_budget_allow(&mut b, h10 + 1_000, 2));
+        assert!(!llm_budget_allow(&mut b, h10 + 2_000, 2)); // habis
+        assert_eq!(llm_calls_this_hour(b, h10 + 2_000), 2);
+        // Jam berganti -> kuota pulih.
+        assert!(llm_budget_allow(&mut b, h10 + 3_600_000, 2));
+        assert_eq!(llm_calls_this_hour(b, h10 + 3_600_000), 1);
+        // max 0 = selalu tolak.
+        let mut b0 = (0, 0);
+        assert!(!llm_budget_allow(&mut b0, h10, 0));
+    }
+
+    #[test]
+    fn history_page_mengembalikan_jendela_terbaru_dan_total() {
+        let dir = std::env::temp_dir().join(format!(
+            "hq-b1b5-history-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hq.db");
+        let db = db_init(path.to_str().unwrap());
+        // WAL aktif (B3).
+        let mode: String = db
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        for at in [1000i64, 2000, 3000, 4000, 5000] {
+            db.execute(
+                "INSERT INTO snapshots(at,requests,input,output,cache,cash,shadow,active_agents) VALUES(?1,0,0,0,0,0,0,0)",
+                rusqlite::params![at],
+            )
+            .unwrap();
+        }
+        // Jendela terbaru 2 baris, offset 1 -> 3000, 4000 (dibalik ASC).
+        let (rows, total) = history_page(&db, 0, 2, 1);
+        assert_eq!(total, 5);
+        let ats: Vec<i64> = rows
+            .iter()
+            .map(|r| r.get("at").unwrap().as_i64().unwrap())
+            .collect();
+        assert_eq!(ats, vec![3000, 4000]);
+        // Halaman pertama: 2 terbaru.
+        let (rows, total) = history_page(&db, 0, 2, 0);
+        assert_eq!(total, 5);
+        let ats: Vec<i64> = rows
+            .iter()
+            .map(|r| r.get("at").unwrap().as_i64().unwrap())
+            .collect();
+        assert_eq!(ats, vec![4000, 5000]);
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
