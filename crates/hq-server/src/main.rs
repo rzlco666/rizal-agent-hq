@@ -1,5 +1,5 @@
 //! hq-server — Rizal Agent HQ (Axum).
-//! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks
+//! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks /api/portfolio
 //! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze,
 //! POST /api/stocks/refresh (harga live, hormati gerbang harian)
 //! Statis: folder web/ (kantor 3D). Penyimpanan: SQLite (snapshot & alert).
@@ -10,13 +10,14 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
-use hq_core::timefmt::now_ms;
+use hq_core::timefmt::{now_ms, wib_date};
 use hq_core::*;
 use serde::Deserialize;
 
+mod portfolio;
 mod stocks_price;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -224,6 +225,7 @@ fn db_init(path: &str) -> rusqlite::Connection {
             task_id TEXT PRIMARY KEY, hash INTEGER, summary TEXT, at INTEGER);",
     )
     .expect("skema SQLite");
+    portfolio::ensure_portfolio_schema(&conn);
     conn
 }
 
@@ -503,6 +505,340 @@ async fn get_history(
     Json(serde_json::json!({ "history": rows }))
 }
 
+/// GET /api/portfolio — posisi + hitung dari cache (satu-satunya sumber hitung;
+/// JS hanya menampilkan). `stocks_error`/`portfolio_error` mengikuti pola
+/// `get_stocks`: file rusak = error jujur, bukan angka palsu.
+async fn get_portfolio(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let today = wib_date(st.stocks.now_ms());
+    let (stocks, stocks_error) =
+        match stocks_price::read_stocks(&format!("{}/stocks.json", st.data_dir)) {
+            stocks_price::StocksFile::Ok(v) => (v, None),
+            stocks_price::StocksFile::Missing => (vec![], None),
+            stocks_price::StocksFile::Invalid(e) => (vec![], Some(e)),
+        };
+    let (pf, pf_error) = match portfolio::read_portfolio(&portfolio::portfolio_path(&st.data_dir)) {
+        portfolio::PortfolioRead::Ok(v) => (v, None),
+        portfolio::PortfolioRead::Missing => (portfolio::PortfolioFile::default(), None),
+        portfolio::PortfolioRead::Invalid(e) => (portfolio::PortfolioFile::default(), Some(e)),
+    };
+    let cache = stocks_price::load_cache(&st.data_dir);
+    let view = portfolio::compute(&pf, &stocks, &cache, &today);
+    let mut out = serde_json::to_value(&view).unwrap_or(serde_json::json!({}));
+    out["stocks_error"] = serde_json::json!(stocks_error);
+    out["portfolio_error"] = serde_json::json!(pf_error);
+    Json(out)
+}
+
+#[derive(Deserialize)]
+struct HoldingBody {
+    #[serde(default)]
+    symbol: Option<String>,
+    #[serde(default)]
+    shares: Option<f64>,
+    #[serde(default)]
+    lots: Option<f64>,
+    #[serde(default)]
+    avg_buy_price: Option<f64>,
+    #[serde(default)]
+    bought_at: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+fn load_stocks_for_validation(data_dir: &str) -> Vec<stocks_price::Stock> {
+    match stocks_price::read_stocks(&format!("{data_dir}/stocks.json")) {
+        stocks_price::StocksFile::Ok(v) => v,
+        _ => vec![],
+    }
+}
+
+/// POST /api/portfolio/holdings — tambah posisi. Simbol ganda = 409 (pakai PATCH).
+async fn post_portfolio_holding(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<HoldingBody>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let today = wib_date(st.stocks.now_ms());
+    let stocks = load_stocks_for_validation(&st.data_dir);
+    let input = portfolio::HoldingInput {
+        symbol: body.symbol,
+        shares: body.shares,
+        lots: body.lots,
+        avg_buy_price: body.avg_buy_price,
+        bought_at: body.bought_at,
+        note: body.note,
+    };
+    let holding = match portfolio::validate_holding(&input, &stocks, &today) {
+        Ok(h) => h,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+    let path = portfolio::portfolio_path(&st.data_dir);
+    let mut pf = match portfolio::read_portfolio(&path) {
+        portfolio::PortfolioRead::Ok(v) => v,
+        portfolio::PortfolioRead::Missing => portfolio::PortfolioFile::default(),
+        portfolio::PortfolioRead::Invalid(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            );
+        }
+    };
+    if pf
+        .holdings
+        .iter()
+        .any(|h| portfolio::norm_symbol(&h.symbol) == portfolio::norm_symbol(&holding.symbol))
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(
+                serde_json::json!({ "error": format!("Simbol {} sudah ada — ubah lewat PATCH.", holding.symbol) }),
+            ),
+        );
+    }
+    pf.holdings.push(holding.clone());
+    if let Err(e) = portfolio::save_portfolio(&path, &pf) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        );
+    }
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "holding": holding })),
+    )
+}
+
+/// PATCH /api/portfolio/holdings/:symbol — ubah posisi. Field yang tidak
+/// diisi dipertahankan; `avg_buy_price` tidak bisa dikosongkan lewat PATCH
+/// (hapus lalu tambah ulang bila perlu).
+async fn patch_portfolio_holding(
+    State(st): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+    Json(body): Json<HoldingBody>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let today = wib_date(st.stocks.now_ms());
+    let stocks = load_stocks_for_validation(&st.data_dir);
+    let path = portfolio::portfolio_path(&st.data_dir);
+    let mut pf = match portfolio::read_portfolio(&path) {
+        portfolio::PortfolioRead::Ok(v) => v,
+        portfolio::PortfolioRead::Missing => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Belum ada posisi." })),
+            );
+        }
+        portfolio::PortfolioRead::Invalid(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            );
+        }
+    };
+    let idx = match pf
+        .holdings
+        .iter()
+        .position(|h| portfolio::norm_symbol(&h.symbol) == portfolio::norm_symbol(&symbol))
+    {
+        Some(i) => i,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(
+                    serde_json::json!({ "error": format!("Simbol {symbol} belum ada di portofolio.") }),
+                ),
+            );
+        }
+    };
+    let old = pf.holdings[idx].clone();
+    let merged = portfolio::HoldingInput {
+        symbol: Some(old.symbol.clone()),
+        shares: body.shares.or(if body.lots.is_some() {
+            None
+        } else {
+            Some(old.shares)
+        }),
+        lots: body.lots,
+        avg_buy_price: body.avg_buy_price.or(old.avg_buy_price),
+        bought_at: body.bought_at.or(old.bought_at),
+        note: body.note.or(old.note),
+    };
+    let holding = match portfolio::validate_holding(&merged, &stocks, &today) {
+        Ok(h) => h,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
+    };
+    pf.holdings[idx] = holding.clone();
+    if let Err(e) = portfolio::save_portfolio(&path, &pf) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        );
+    }
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "holding": holding })),
+    )
+}
+
+/// DELETE /api/portfolio/holdings/:symbol — hapus posisi. Snapshot histori
+/// TIDAK dihapus (agregat masa lalu tetap apa adanya).
+async fn delete_portfolio_holding(
+    State(st): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let path = portfolio::portfolio_path(&st.data_dir);
+    let mut pf = match portfolio::read_portfolio(&path) {
+        portfolio::PortfolioRead::Ok(v) => v,
+        portfolio::PortfolioRead::Missing => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Belum ada posisi." })),
+            );
+        }
+        portfolio::PortfolioRead::Invalid(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            );
+        }
+    };
+    let idx = match pf
+        .holdings
+        .iter()
+        .position(|h| portfolio::norm_symbol(&h.symbol) == portfolio::norm_symbol(&symbol))
+    {
+        Some(i) => i,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(
+                    serde_json::json!({ "error": format!("Simbol {symbol} belum ada di portofolio.") }),
+                ),
+            );
+        }
+    };
+    let removed = pf.holdings.remove(idx);
+    if let Err(e) = portfolio::save_portfolio(&path, &pf) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        );
+    }
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "deleted": removed.symbol })),
+    )
+}
+
+#[derive(Deserialize)]
+struct PortfolioHistoryQ {
+    days: Option<i64>,
+    currency: Option<String>,
+}
+
+/// GET /api/portfolio/history?days=30&currency=IDR — baris snapshot harian.
+async fn get_portfolio_history(
+    State(st): State<Arc<AppState>>,
+    Query(q): Query<PortfolioHistoryQ>,
+) -> Json<serde_json::Value> {
+    let days = q.days.unwrap_or(30).clamp(1, 365);
+    let now = st.stocks.now_ms();
+    let rows = match st.db.lock() {
+        Ok(db) => portfolio::read_history(&db, days, q.currency.as_deref(), now),
+        Err(_) => vec![],
+    };
+    Json(serde_json::json!({ "history": rows }))
+}
+
+/// POST /api/portfolio/snapshot — trigger manual snapshot hari itu (idempotent).
+async fn post_portfolio_snapshot(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let now = st.stocks.now_ms();
+    let out = match st.db.lock() {
+        Ok(db) => portfolio::take_snapshot(&db, &st.data_dir, now),
+        Err(_) => serde_json::json!({ "snapshotted": false, "reason": "database terkunci" }),
+    };
+    Json(out)
+}
+
+#[derive(Deserialize)]
+struct FxBody {
+    #[serde(default)]
+    usd_idr_rate: Option<f64>,
+    #[serde(default)]
+    rate_asof: Option<String>,
+}
+
+/// POST /api/portfolio/config — isi/ubah kurs manual USD→IDR (berpasangan
+/// dengan tanggalnya; tanpa kurs, tidak ada grand total IDR).
+async fn post_portfolio_config(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<FxBody>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let today = wib_date(st.stocks.now_ms());
+    if let Some(r) = body.usd_idr_rate {
+        if r <= 0.0 || !r.is_finite() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Kurs harus lebih dari 0." })),
+            );
+        }
+    }
+    if let Some(d) = body.rate_asof.as_deref() {
+        let d = d.trim();
+        if !portfolio::valid_date(d) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({ "error": "Tanggal kurs harus format YYYY-MM-DD yang valid." }),
+                ),
+            );
+        }
+        if d > today.as_str() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Tanggal kurs tidak boleh di masa depan." })),
+            );
+        }
+    }
+    if body.usd_idr_rate.is_some() != body.rate_asof.is_some() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Kurs dan tanggal kurs harus diisi bersamaan." })),
+        );
+    }
+    let path = portfolio::portfolio_path(&st.data_dir);
+    let mut pf = match portfolio::read_portfolio(&path) {
+        portfolio::PortfolioRead::Ok(v) => v,
+        portfolio::PortfolioRead::Missing => portfolio::PortfolioFile::default(),
+        portfolio::PortfolioRead::Invalid(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            );
+        }
+    };
+    pf.usd_idr_rate = body.usd_idr_rate;
+    pf.rate_asof = body.rate_asof.map(|d| d.trim().to_string());
+    if let Err(e) = portfolio::save_portfolio(&path, &pf) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        );
+    }
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "usd_idr_rate": pf.usd_idr_rate, "rate_asof": pf.rate_asof })),
+    )
+}
+
 async fn ws_handler(
     ws: axum::extract::ws::WebSocketUpgrade,
     State(st): State<Arc<AppState>>,
@@ -618,6 +954,7 @@ async fn main() {
 
     refresh(&st).await;
     stocks_price::spawn_scheduler(st.stocks.clone());
+    portfolio::spawn_portfolio_scheduler(st.clone());
     {
         let st2 = st.clone();
         tokio::spawn(async move {
@@ -651,6 +988,15 @@ async fn main() {
         .route("/api/history", get(get_history))
         .route("/api/stocks", get(get_stocks))
         .route("/api/stocks/refresh", post(post_stocks_refresh))
+        .route("/api/portfolio", get(get_portfolio))
+        .route("/api/portfolio/holdings", post(post_portfolio_holding))
+        .route(
+            "/api/portfolio/holdings/{symbol}",
+            patch(patch_portfolio_holding).delete(delete_portfolio_holding),
+        )
+        .route("/api/portfolio/history", get(get_portfolio_history))
+        .route("/api/portfolio/snapshot", post(post_portfolio_snapshot))
+        .route("/api/portfolio/config", post(post_portfolio_config))
         .route(
             "/api/health",
             get(|| async {
