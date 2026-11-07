@@ -249,7 +249,8 @@ async function renderStocks() {
     const quotes = d.quotes || {};
     if (d.error) { el.innerHTML = `<p class="mut">${esc(d.error)}</p><p class="mut small">${t('sahamHow')}</p>`; return; }
     if (!rows.length) {
-      el.innerHTML = `<div class="pcard"><p>${t('sahamEmpty')}</p><p class="mut small">${t('sahamHow')}</p><pre style="white-space:pre-wrap;background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:10px 12px;font-size:12px">[\n  {\"symbol\": \"BBCA\", \"name\": \"Bank Central Asia\", \"shares\": 100, \"price\": 9500, \"currency\": \"IDR\"}\n]</pre><p class="mut small">File contoh di atas hanya format — bukan data nyata, dan tidak ditampilkan sebagai portofolio sampai kamu membuat stocks.json sendiri. Dokumentasi lengkap: docs/SAHAM.md</p></div>`;
+      el.innerHTML = `<div class="pcard"><p>${t('sahamEmpty')}</p><p class="mut small">${t('sahamHow')}</p><pre style="white-space:pre-wrap;background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:10px 12px;font-size:12px">[\n  {\"symbol\": \"BBCA\", \"name\": \"Bank Central Asia\", \"shares\": 100, \"price\": 9500, \"currency\": \"IDR\"}\n]</pre><p class="mut small">File contoh di atas hanya format — bukan data nyata, dan tidak ditampilkan sebagai portofolio sampai kamu membuat stocks.json sendiri. Dokumentasi lengkap: docs/SAHAM.md</p></div><div id="portoSection"></div>`;
+      renderPortfolioSection([]);
       return;
     }
     const fmtMoney = (n, cur) => cur === 'IDR' ? 'Rp ' + Math.round(n).toLocaleString(LOC()) : fmtUsd(n);
@@ -264,10 +265,162 @@ async function renderStocks() {
         : '<span class="mut small">—</span>';
       return `<tr><td><b>${esc(st.symbol)}</b></td><td>${esc(st.name || '—')}</td><td>${(st.shares || 0).toLocaleString(LOC())}</td><td>${fmtMoney(st.price || 0, st.currency || cur)}</td><td>${liveCell}</td><td><b>${fmtMoney((st.shares || 0) * (st.price || 0), st.currency || cur)}</b></td></tr>`;
     }).join('')}</tbody></table></div>
-    <p class="mut small">${t('sahamNote')} ${hasQuotes ? t('sahamLiveFootnote') : t('sahamNoKey')}</p>`;
+    <p class="mut small">${t('sahamNote')} ${hasQuotes ? t('sahamLiveFootnote') : t('sahamNoKey')}</p><div id="portoSection"></div>`;
+    renderPortfolioSection(rows);
   } catch (e) {
     el.innerHTML = `<p class="mut">Portofolio gagal dimuat: ${esc(String(e))}</p>`;
   }
+}
+
+// ---------- Portofolio: posisi manual + hitung server (harga dari cache) ----------
+let portoEditSym = null;
+const fmtPct = n => (n >= 0 ? '+' : '') + n.toFixed(2).replace('.', ',') + '%';
+function portoMoney(n, cur) {
+  if (n == null) return '—';
+  return cur === 'IDR' ? 'Rp ' + Math.round(n).toLocaleString(LOC()) : fmtUsd(n);
+}
+function portoPnlCell(v, pct, cur) {
+  if (v == null) return '<span class="mut small">—</span>';
+  const cls = v > 0 ? 'color:#1db877' : v < 0 ? 'color:#e5484d' : '';
+  return `<span style="${cls}"><b>${portoMoney(v, cur)}</b>${pct != null ? ` (${fmtPct(pct)})` : ''}</span>`;
+}
+function portoReason(r) {
+  if (r === 'harga belum tersedia') return t('portoNoPrice');
+  if (r === 'harga beli belum diisi') return t('portoNoBuy');
+  if (r === 'tanpa previous close (EOD)') return t('portoNoPrev');
+  return r;
+}
+async function renderPortfolioSection(stocks) {
+  const el = $('#portoSection'); if (!el) return;
+  el.innerHTML = '<p class="mut small">Memuat portofolio…</p>';
+  let d;
+  try {
+    d = await (await fetch('/api/portfolio')).json();
+  } catch (e) {
+    el.innerHTML = `<p class="mut">Portofolio gagal dimuat: ${esc(String(e))}</p>`;
+    return;
+  }
+  if (d.portfolio_error) { el.innerHTML = `<p class="mut">${esc(d.portfolio_error)}</p>`; return; }
+  const holdings = d.holdings || [];
+  const totals = d.totals || { per_currency: [] };
+  const cards = (totals.per_currency || []).map(tc => {
+    const cur = tc.currency;
+    return `<div class="pcard"><div class="mut small">${esc(cur)} · ${tc.holdings} ${t('portoPositions')} (${tc.priced} ${t('portoPriced')})</div>
+    <div><span class="mut small">${t('portoValue')}</span> <b>${portoMoney(tc.value, cur)}</b></div>
+    <div><span class="mut small">${t('portoPnl')}</span> ${portoPnlCell(tc.pnl, tc.pnl_pct, cur)}</div>
+    <div><span class="mut small">${t('portoDay')}</span> ${portoPnlCell(tc.day_pnl, tc.day_pnl_pct, cur)}</div></div>`;
+  }).join('');
+  const grand = totals.grand_idr != null
+    ? `<div class="pcard"><div class="mut small">${t('portoGrand')}</div><div class="num">${portoMoney(totals.grand_idr, 'IDR')}</div>${totals.fx ? `<div class="mut small">kurs ${Number(totals.fx.rate).toLocaleString(LOC())} per ${esc(totals.fx.asof)}</div>` : ''}</div>`
+    : (totals.per_currency || []).some(tc => tc.currency !== 'IDR')
+      ? `<div class="pcard"><p class="mut small">${t('portoFxHint')}</p></div>`
+      : '';
+  const rows = holdings.map(h => {
+    const liveCell = h.live
+      ? `<b>${portoMoney(h.live.price, h.currency)}</b><div class="mut small">${esc(stockLiveLabel(h.live))}</div>`
+      : '<span class="mut small">—</span>';
+    const lotsTxt = h.currency === 'IDR' ? `${h.shares.toLocaleString(LOC())} lbr (${(+h.lots).toLocaleString(LOC(), { maximumFractionDigits: 2 })} lot)` : `${h.shares.toLocaleString(LOC())}`;
+    const reason = h.reasons && h.reasons.length ? `<div class="mut small">${esc(h.reasons.map(portoReason).join(' · '))}</div>` : '';
+    return `<tr><td><b>${esc(h.symbol)}</b><div class="mut small">${esc(h.name || '')}</div>${reason}</td><td>${lotsTxt}</td><td>${h.avg_buy_price != null ? portoMoney(h.avg_buy_price, h.currency) : '<span class="mut small">—</span>'}</td><td>${liveCell}</td><td><b>${portoMoney(h.value, h.currency)}</b></td><td>${portoPnlCell(h.pnl, h.pnl_pct, h.currency)}</td><td>${portoPnlCell(h.day_pnl, h.day_pnl_pct, h.currency)}</td><td><button class="btn" data-porto-edit="${esc(h.symbol)}">${t('portoEdit')}</button> <button class="btn" data-porto-del="${esc(h.symbol)}">${t('portoDel')}</button></td></tr>`;
+  }).join('');
+  const opts = (stocks || []).map(s => `<option value="${esc(s.symbol)}">${esc(s.symbol)} — ${esc(s.name || '')}</option>`).join('');
+  const form = (stocks || []).length
+    ? `<form id="portoForm" onsubmit="return false" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px">
+      <label class="mut small">${t('portoSym')}<select id="portoSym" style="width:100%">${opts}</select></label>
+      <label class="mut small">${t('portoLots')}<input id="portoLots" type="number" min="0" step="0.01" placeholder="10"></label>
+      <label class="mut small">${t('portoShares')}<input id="portoShares" type="number" min="0" step="0.01" placeholder="1000"></label>
+      <label class="mut small">${t('portoAvg')}<input id="portoAvg" type="number" min="0" step="0.01"></label>
+      <label class="mut small">${t('portoBought')}<input id="portoBought" type="date"></label>
+      <label class="mut small">${t('portoNote')}<input id="portoNote" type="text" maxlength="200"></label>
+      <div style="display:flex;gap:8px;align-items:end"><button class="btn" id="portoSaveBtn">${t('portoSave')}</button><button class="btn" id="portoCancelBtn" style="display:none">${t('portoCancel')}</button></div>
+    </form>`
+    : `<p class="mut small">${t('portoNeedStocks')}</p>`;
+  const fxLine = totals.fx
+    ? `<div class="mut small">${t('portoFxT')}: ${Number(totals.fx.rate).toLocaleString(LOC())} per ${esc(totals.fx.asof)}</div>`
+    : '';
+  el.innerHTML = `<h3 style="margin:18px 0 8px">${t('portoT')}</h3>
+    ${holdings.length ? cards + grand : `<div class="pcard"><p>${t('portoEmpty')}</p></div>`}
+    ${holdings.length ? `<div class="tableWrap"><table class="mtab"><thead><tr><th>${t('portoSym')}</th><th>${t('portoShares')}</th><th>${t('portoAvg')}</th><th>${t('portoLive')}</th><th>${t('portoValue')}</th><th>${t('portoPnl')}</th><th>${t('portoDay')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <p class="mut small">${esc((d.notes || []).join(' · '))}</p>
+    ${form}
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:end">
+      <label class="mut small">${t('portoFxRate')}<input id="portoFxRate" type="number" min="0" step="0.01" value="${totals.fx ? esc(String(totals.fx.rate)) : ''}"></label>
+      <label class="mut small">${t('portoFxAsof')}<input id="portoFxAsof" type="date" value="${totals.fx ? esc(totals.fx.asof) : ''}"></label>
+      <button class="btn" id="portoFxBtn">${t('portoFxSave')}</button>
+      <button class="btn" id="portoSnapBtn">${t('portoSnap')}</button>
+    </div>${fxLine}`;
+  const saveBtn = $('#portoSaveBtn');
+  if (saveBtn) saveBtn.onclick = portoSave;
+  const cancelBtn = $('#portoCancelBtn');
+  if (cancelBtn) cancelBtn.onclick = () => { portoEditSym = null; renderStocks(); };
+  const fxBtn = $('#portoFxBtn');
+  if (fxBtn) fxBtn.onclick = portoSaveFx;
+  const snapBtn = $('#portoSnapBtn');
+  if (snapBtn) snapBtn.onclick = portoSnapshot;
+  document.querySelectorAll('[data-porto-edit]').forEach(b => b.onclick = () => portoEdit(b.dataset.portoEdit));
+  document.querySelectorAll('[data-porto-del]').forEach(b => b.onclick = () => portoDelete(b.dataset.portoDel));
+}
+async function portoSave() {
+  const sym = $('#portoSym').value;
+  const lots = parseFloat($('#portoLots').value);
+  const shares = parseFloat($('#portoShares').value);
+  const avg = parseFloat($('#portoAvg').value);
+  const bought = $('#portoBought').value;
+  const note = $('#portoNote').value;
+  const body = { symbol: sym };
+  if (!isNaN(lots)) body.lots = lots;
+  if (!isNaN(shares)) body.shares = shares;
+  if (!isNaN(avg)) body.avg_buy_price = avg;
+  if (bought) body.bought_at = bought;
+  if (note) body.note = note;
+  const editing = portoEditSym;
+  const url = editing ? `/api/portfolio/holdings/${encodeURIComponent(editing)}` : '/api/portfolio/holdings';
+  const r = await fetch(url, { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const dd = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(dd.error || t('toastFail'), true); return; }
+  portoEditSym = null;
+  toast(t('portoSaved'));
+  renderStocks();
+}
+function portoEdit(sym) {
+  portoEditSym = sym;
+  fetch('/api/portfolio').then(r => r.json()).then(d => {
+    const h = (d.holdings || []).find(x => x.symbol === sym);
+    if (!h) return;
+    const set = (id, v) => { const e = $(id); if (e) e.value = v; };
+    set('#portoSym', h.symbol);
+    set('#portoShares', h.shares);
+    set('#portoLots', '');
+    set('#portoAvg', h.avg_buy_price ?? '');
+    set('#portoBought', h.bought_at || '');
+    set('#portoNote', h.note || '');
+    const s = $('#portoSym'); if (s) s.disabled = true;
+    const b = $('#portoSaveBtn'); if (b) b.textContent = t('portoUpdate');
+    const c = $('#portoCancelBtn'); if (c) c.style.display = '';
+  });
+}
+async function portoDelete(sym) {
+  if (!confirm(t('portoDelConfirm').replace('{s}', sym))) return;
+  const r = await fetch(`/api/portfolio/holdings/${encodeURIComponent(sym)}`, { method: 'DELETE' });
+  if (!r.ok) { toast(t('toastFail'), true); return; }
+  toast(t('portoDeleted'));
+  renderStocks();
+}
+async function portoSaveFx() {
+  const rate = parseFloat($('#portoFxRate').value);
+  const asof = $('#portoFxAsof').value;
+  if (isNaN(rate) || !asof) { toast(t('portoFxNeed'), true); return; }
+  const r = await fetch('/api/portfolio/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usd_idr_rate: rate, rate_asof: asof }) });
+  const dd = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(dd.error || t('toastFail'), true); return; }
+  toast(t('portoSaved'));
+  renderStocks();
+}
+async function portoSnapshot() {
+  const r = await fetch('/api/portfolio/snapshot', { method: 'POST' });
+  const dd = await r.json().catch(() => ({}));
+  toast(dd.snapshotted ? t('portoSnapOk') : (dd.reason || t('toastFail')), !dd.snapshotted);
+  renderStocks();
 }
 
 // ---------- Performance Workspace: donut + hitungan + tabel tugas satu agent (data live) ----------
@@ -409,15 +562,15 @@ function renderModels(s) {
 // ================= i18n: ID / EN / 中文 (kerangka UI; kalimat aktivitas agen dari server tetap apa adanya) =================
 let LANG = localStorage.getItem('hq-lang') || 'id';
 const DICT = {
-  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP', navStudio:'Studio', studioT:'Studio', studioSub:'Agent utama yang sedang bekerja di HQ — dari data live, bukan tim contoh', studioOpen:'Buka detail', studioNoMain:'Belum ada agent utama yang terbaca.', sahamEmpty:'Belum ada portofolio yang dihubungkan.', sahamHow:'Buat file stocks.json di folder data HQ (lihat docs/SAHAM.md), lalu buka ulang panel ini. Harga di file itu adalah harga yang kamu isi sendiri — kolom harga live (opsional) terpisah dan tidak pernah menimpa file; tidak ada angka contoh yang ditampilkan.', sahamTotal:'Total portofolio (dari file)', sahamNote:'Harga dari file kamu, bukan harga live pasar.', sahamLiveCol:'Harga live (sumber, waktu)', sahamLive:'Live · delay 15–20 mnt, per 15:00 WIB, diambil {time} WIB (EODHD)', sahamDelayed:'penutupan {date}, diambil {time} WIB ({src})', sahamStale:'data terakhir {date}', sahamNoKey:'Harga live belum dikonfigurasi (EODHD_API_KEY/FMP_API_KEY kosong) — kolom live dibiarkan kosong, bukan angka palsu.', sahamLiveFootnote:'Kolom harga live (EODHD untuk IDX, FMP untuk bursa lain) hanya tampilan — berkas stocks.json kamu tidak pernah ditimpa.', navStocks:'Saham', navKnow:'Pengetahuan', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh', perfAgentLbl:'Agent', perfSearchPh:'Cari tugas…', perfRun:'Dikerjakan', perfWait:'Menunggu review', perfDone:'Selesai', perfFail:'Perlu diperiksa', perfOpen:'Buka tugas', perfNoTasks:'Belum ada tugas tercatat untuk agent ini.', perfDetail:'Buka detail agent', sahamT:'Saham', sahamSub:'Harga dari file kamu + kolom harga live opsional (EODHD/FMP)', knowT:'Pengetahuan', knowSub:'Modul ini belum dihubungkan ke sumber dokumen apa pun',
+  id: { navCtrl:'Ruang kendali', navBoard:'Papan tugas', navFac:'Fasilitas', navModels:'Model & Provider', navAlert:'Fokus alert', secToday:'Ringkasan hari ini', secNeeds:'Butuh Rizal', boardT:'Papan Tugas', boardSub:'Semua tugas agen, dikelompokkan per fase — diperbarui langsung', facT:'Fasilitas & Lingkungan', facSub:'Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual', modT:'Dashboard Model & Provider', modSub:'Semua model dari semua provider — request, token, dan biaya per model (data omp stats)', close:'Tutup', searchPh:'Cari agen atau tim…', secQuota:'Kuota provider', secEnv:'Lingkungan (konteks)', tasksT:'Tugas (manusiawi)', logT:'Log (manusiawi)', rawLbl:'lihat mentah', camIso:'Isometrik', camTop:'Atas', mode2d:'Mode 2D', panelT:'Panel', hintT:'Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail', zoneAll:'Seluruh kantor', zoneClaude:'Studio Muse', zoneOmp:'Ruang OMP', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'Server MCP', navStudio:'Studio', studioT:'Studio', studioSub:'Agent utama yang sedang bekerja di HQ — dari data live, bukan tim contoh', studioOpen:'Buka detail', studioNoMain:'Belum ada agent utama yang terbaca.', sahamEmpty:'Belum ada portofolio yang dihubungkan.', sahamHow:'Buat file stocks.json di folder data HQ (lihat docs/SAHAM.md), lalu buka ulang panel ini. Harga di file itu adalah harga yang kamu isi sendiri — kolom harga live (opsional) terpisah dan tidak pernah menimpa file; tidak ada angka contoh yang ditampilkan.', sahamTotal:'Total portofolio (dari file)', sahamNote:'Harga dari file kamu, bukan harga live pasar.', sahamLiveCol:'Harga live (sumber, waktu)', sahamLive:'Live · delay 15–20 mnt, per 15:00 WIB, diambil {time} WIB (EODHD)', sahamDelayed:'penutupan {date}, diambil {time} WIB ({src})', sahamStale:'data terakhir {date}', sahamNoKey:'Harga live belum dikonfigurasi (EODHD_API_KEY/FMP_API_KEY kosong) — kolom live dibiarkan kosong, bukan angka palsu.', sahamLiveFootnote:'Kolom harga live (EODHD untuk IDX, FMP untuk bursa lain) hanya tampilan — berkas stocks.json kamu tidak pernah ditimpa.', navStocks:'Saham', navKnow:'Pengetahuan', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh', perfAgentLbl:'Agent', perfSearchPh:'Cari tugas…', perfRun:'Dikerjakan', perfWait:'Menunggu review', perfDone:'Selesai', perfFail:'Perlu diperiksa', perfOpen:'Buka tugas', perfNoTasks:'Belum ada tugas tercatat untuk agent ini.', perfDetail:'Buka detail agent', sahamT:'Saham', sahamSub:'Harga dari file kamu + kolom harga live opsional (EODHD/FMP)', portoT:'Portofolio (posisi milikmu)', portoEmpty:'Belum ada posisi. Tambahkan posisi pertama — harga diambil dari cache live, posisi tidak ditebak dari daftar pantauan.', portoPositions:'posisi', portoPriced:'ada harga', portoValue:'Nilai', portoPnl:'Untung/rugi', portoDay:'Harian', portoGrand:'Grand total (IDR)', portoSym:'Simbol', portoShares:'Lembar', portoLots:'Lot (1 lot = 100 lbr)', portoAvg:'Harga beli rata-rata', portoBought:'Tanggal beli', portoNote:'Catatan', portoSave:'Simpan posisi', portoUpdate:'Ubah posisi', portoCancel:'Batal', portoEdit:'Ubah', portoDel:'Hapus', portoDelConfirm:'Hapus posisi {s}? Histori snapshot tetap tersimpan.', portoSaved:'Posisi tersimpan.', portoDeleted:'Posisi dihapus.', portoSnap:'Simpan snapshot hari ini', portoSnapOk:'Snapshot hari ini tersimpan.', portoFxT:'Kurs USD→IDR (manual)', portoFxHint:'Grand total IDR tidak tersedia — isi kurs USD→IDR.', portoFxNeed:'Isi kurs dan tanggal kurs.', portoFxRate:'Kurs (Rp per $1)', portoFxAsof:'Tanggal kurs', portoFxSave:'Simpan kurs', portoLive:'Harga live', portoNoPrice:'harga belum ada', portoNoBuy:'harga beli belum diisi', portoNoPrev:'tanpa previous close (EOD)', portoNeedStocks:'Tambahkan simbol dulu di stocks.json (panel Saham) sebelum membuat posisi.', knowT:'Pengetahuan', knowSub:'Modul ini belum dihubungkan ke sumber dokumen apa pun',
     kpiReq:'request OMP tercatat', kpiTok:'token (masuk+keluar)', kpiCash:'biaya TUNAI', kpiShadow:'biaya bayangan (langganan)', kpiBal:'estimasi saldo DeepSeek', working:'bekerja', ofAgents:'dari {n} agent tampil', allSafe:'Tidak ada alert aktif. Semua aman.', ack:'Sudah saya tangani', snooze:'Tunda', since:'Sejak', agentW:'agent', colRun:'Sedang berjalan', colWait:'Menunggu Rizal', colDone:'Selesai', colFail:'Gagal',
     mModel:'Model', mProvider:'Provider', mReq:'Request', mTokIn:'Token masuk', mCost:'Biaya', mClass:'Kelas', mShare:'Pangsa', mFailed:'gagal', mOut:'keluar', mCache:'cache', mCash:'tunai', mShadow:'bayangan', modelsEmpty:'Belum ada data model — OMP stats belum terbaca.', modelsNote:'Kelas TUNAI = uang nyata keluar (DeepSeek API & model berbayar gateway). BAYANGAN = setara-API provider langganan, bukan tagihan baru (OpenCode Go termasuk bayangan — meteran limit dari langganan flat $10/bln). GRATIS = model $0. Diurutkan dari biaya terbesar.',
     clsTunai:'TUNAI', clsBayangan:'BAYANGAN', clsGratis:'GRATIS', tabSummary:'Ringkasan', tabTasks:'Tugas', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sesi & File', toastAck:'Alert ditandai sudah ditangani — tersimpan, tidak akan muncul lagi.', toastSnooze:'Alert ditunda {h} jam — tersimpan.', toastFail:'Aksi alert gagal terkirim — cek koneksi ke server HQ.', updatedAgo:'diperbarui {n} dtk lalu', simPauseT:'Jeda / lanjutkan animasi', simOrbitT:'Kamera mengorbit otomatis', simFollowT:'Kamera mengikuti agen terpilih', pickAgentFirst:'Pilih agen dulu (klik figurnya), lalu aktifkan Ikuti 🎯', raw:'LIHAT MENTAH' },
-  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Drag to pan · Scroll to zoom · Click an agent for details', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers', navStudio:'Studio', studioT:'Studio', studioSub:'Main agents working in HQ — from live data, not a sample team', studioOpen:'Open detail', studioNoMain:'No main agents found.', sahamEmpty:'No portfolio connected yet.', sahamHow:'Create stocks.json in the HQ data folder (see docs/SAHAM.md), then reopen this panel. Prices in that file are the ones you entered — not live market prices, and no sample numbers are shown.', sahamTotal:'Portfolio total (from file)', sahamNote:'Prices from your file, not live market prices.', sahamLiveCol:'Live price (source, time)', sahamLive:'Live · 15–20 min delay, per 15:00 WIB, fetched {time} WIB (EODHD)', sahamDelayed:'close {date}, fetched {time} WIB ({src})', sahamStale:'last data {date}', sahamNoKey:'Live prices are not configured (EODHD_API_KEY/FMP_API_KEY empty) — the live column stays blank instead of showing made-up numbers.', sahamLiveFootnote:'The live price column (EODHD for IDX, FMP for other exchanges) is display-only — your stocks.json is never overwritten.', navStocks:'Stocks', navKnow:'Knowledge', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'One agent\'s progress and tasks — from real HQ task data, not samples', perfAgentLbl:'Agent', perfSearchPh:'Search tasks…', perfRun:'In progress', perfWait:'Waiting for review', perfDone:'Done', perfFail:'Needs review', perfOpen:'Open task', perfNoTasks:'No tasks recorded for this agent yet.', perfDetail:'Open agent detail', sahamT:'Stocks', sahamSub:'Your file prices plus an optional live price column (EODHD/FMP)', knowT:'Knowledge', knowSub:'This module is not connected to any document source yet',
+  en: { navCtrl:'Control room', navBoard:'Task board', navFac:'Facilities', navModels:'Models & Providers', navAlert:'Focus alerts', secToday:'Today at a glance', secNeeds:'Needs Rizal', boardT:'Task Board', boardSub:'All agent tasks grouped by phase — updated live', facT:'Facilities & Environment', facSub:'Machine, container, and service conditions around the virtual office', modT:'Models & Providers Dashboard', modSub:'Every model from every provider — requests, tokens, and cost per model (omp stats data)', close:'Close', searchPh:'Search agent or team…', secQuota:'Provider quotas', secEnv:'Environment (context)', tasksT:'Tasks (humanized)', logT:'Log (humanized)', rawLbl:'view raw', camIso:'Isometric', camTop:'Top', mode2d:'2D mode', panelT:'Panel', hintT:'Drag to pan · Scroll to zoom · Click an agent for details', zoneAll:'Whole office', zoneClaude:'Claude Studio', zoneOmp:'OMP Room', zoneWorkers:'Workers', zoneCursor:'Cursor', zoneMeeting:'Meeting', zoneMcp:'MCP Servers', navStudio:'Studio', studioT:'Studio', studioSub:'Main agents working in HQ — from live data, not a sample team', studioOpen:'Open detail', studioNoMain:'No main agents found.', sahamEmpty:'No portfolio connected yet.', sahamHow:'Create stocks.json in the HQ data folder (see docs/SAHAM.md), then reopen this panel. Prices in that file are the ones you entered — not live market prices, and no sample numbers are shown.', sahamTotal:'Portfolio total (from file)', sahamNote:'Prices from your file, not live market prices.', sahamLiveCol:'Live price (source, time)', sahamLive:'Live · 15–20 min delay, per 15:00 WIB, fetched {time} WIB (EODHD)', sahamDelayed:'close {date}, fetched {time} WIB ({src})', sahamStale:'last data {date}', sahamNoKey:'Live prices are not configured (EODHD_API_KEY/FMP_API_KEY empty) — the live column stays blank instead of showing made-up numbers.', sahamLiveFootnote:'The live price column (EODHD for IDX, FMP for other exchanges) is display-only — your stocks.json is never overwritten.', navStocks:'Stocks', navKnow:'Knowledge', navPerf:'Performance', perfT:'Performance Workspace', perfSub:'One agent\'s progress and tasks — from real HQ task data, not samples', perfAgentLbl:'Agent', perfSearchPh:'Search tasks…', perfRun:'In progress', perfWait:'Waiting for review', perfDone:'Done', perfFail:'Needs review', perfOpen:'Open task', perfNoTasks:'No tasks recorded for this agent yet.', perfDetail:'Open agent detail', sahamT:'Stocks', sahamSub:'Your file prices plus an optional live price column (EODHD/FMP)', portoT:'Portfolio (your positions)', portoEmpty:'No positions yet. Add your first position — prices come from the live cache, positions are never guessed from the watchlist.', portoPositions:'positions', portoPriced:'priced', portoValue:'Value', portoPnl:'Gain/loss', portoDay:'Today', portoGrand:'Grand total (IDR)', portoSym:'Symbol', portoShares:'Shares', portoLots:'Lots (1 lot = 100 shares)', portoAvg:'Avg buy price', portoBought:'Buy date', portoNote:'Note', portoSave:'Save position', portoUpdate:'Update position', portoCancel:'Cancel', portoEdit:'Edit', portoDel:'Delete', portoDelConfirm:'Delete position {s}? Snapshot history is kept.', portoSaved:'Position saved.', portoDeleted:'Position deleted.', portoSnap:'Save today’s snapshot', portoSnapOk:'Today’s snapshot saved.', portoFxT:'USD→IDR rate (manual)', portoFxHint:'IDR grand total unavailable — enter the USD→IDR rate.', portoFxNeed:'Enter the rate and its date.', portoFxRate:'Rate (Rp per $1)', portoFxAsof:'Rate date', portoFxSave:'Save rate', portoLive:'Live price', portoNoPrice:'no price yet', portoNoBuy:'buy price not set', portoNoPrev:'no previous close (EOD)', portoNeedStocks:'Add the symbol to stocks.json (Stocks panel) first.', knowT:'Knowledge', knowSub:'This module is not connected to any document source yet',
     kpiReq:'OMP requests recorded', kpiTok:'tokens (in+out)', kpiCash:'CASH cost', kpiShadow:'shadow cost (subscriptions)', kpiBal:'est. DeepSeek balance', working:'working', ofAgents:'of {n} agents shown', allSafe:'No active alerts. All clear.', ack:'Handled', snooze:'Snooze', since:'Since', agentW:'agent', colRun:'In progress', colWait:'Waiting for Rizal', colDone:'Done', colFail:'Failed',
     mModel:'Model', mProvider:'Provider', mReq:'Requests', mTokIn:'Tokens in', mCost:'Cost', mClass:'Class', mShare:'Share', mFailed:'failed', mOut:'out', mCache:'cache', mCash:'cash', mShadow:'shadow', modelsEmpty:'No model data yet — OMP stats not read.', modelsNote:'CASH class = real money out (DeepSeek API & paid gateway models). SHADOW = API-equivalent cost of subscription providers, not a new bill (OpenCode Go counts as shadow — a metered limit on the flat $10/mo plan). FREE = $0 models. Sorted by cost, descending.',
     clsTunai:'CASH', clsBayangan:'SHADOW', clsGratis:'FREE', tabSummary:'Summary', tabTasks:'Tasks', tabLog:'Log', tabUsage:'Usage', tabSessions:'Sessions & Files', toastAck:'Alert marked handled — saved, it will not reappear.', toastSnooze:'Alert snoozed for {h} h — saved.', toastFail:'Alert action failed to send — check the HQ server connection.', updatedAgo:'updated {n}s ago', simPauseT:'Pause / resume animation', simOrbitT:'Auto-orbit camera', simFollowT:'Camera follows the selected agent', pickAgentFirst:'Select an agent first (click its figure), then enable Follow 🎯', raw:'VIEW RAW' },
-  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'拖动平移 · 滚动缩放 · 点击代理查看详情', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器', navStudio:'工作室', studioT:'工作室', studioSub:'HQ 中工作的主代理 — 来自实时数据，而非示例团队', studioOpen:'打开详情', studioNoMain:'未找到主代理。', sahamEmpty:'尚未连接投资组合。', sahamHow:'在 HQ 数据文件夹中创建 stocks.json（见 docs/SAHAM.md），然后重新打开此面板。文件中的价格是你自己填写的 — 不是实时市场价格，也不显示示例数字。', sahamTotal:'投资组合总额（来自文件）', sahamNote:'价格来自你的文件，不是实时市场价格。', sahamLiveCol:'实时价格（来源、时间）', sahamLive:'实时 · 延迟 15–20 分钟，截至 15:00 WIB，{time} WIB 获取（EODHD）', sahamDelayed:'收盘 {date}，{time} WIB 获取（{src}）', sahamStale:'最后数据 {date}', sahamNoKey:'实时价格尚未配置（EODHD_API_KEY/FMP_API_KEY 为空）— 实时列留空，不显示虚构数字。', sahamLiveFootnote:'实时价格列（IDX 使用 EODHD，其他交易所使用 FMP）仅为展示 — 你的 stocks.json 永远不会被覆盖。', navStocks:'股票', navKnow:'知识库', navPerf:'绩效', perfT:'绩效工作区', perfSub:'单个代理的进度与任务 — 来自真实 HQ 任务数据，而非示例', perfAgentLbl:'代理', perfSearchPh:'搜索任务…', perfRun:'进行中', perfWait:'等待审核', perfDone:'已完成', perfFail:'需要检查', perfOpen:'打开任务', perfNoTasks:'该代理暂无任务记录。', perfDetail:'打开代理详情', sahamT:'股票', sahamSub:'你的文件价格，外加可选的实时价格列（EODHD/FMP）', knowT:'知识库', knowSub:'该模块尚未连接任何文档源',
+  zh: { navCtrl:'控制室', navBoard:'任务看板', navFac:'设施', navModels:'模型与提供商', navAlert:'聚焦警报', secToday:'今日概览', secNeeds:'需要 Rizal 处理', boardT:'任务看板', boardSub:'按阶段分组的全部代理任务 — 实时更新', facT:'设施与环境', facSub:'虚拟办公室周边的机器、容器与服务状态', modT:'模型与提供商面板', modSub:'所有提供商的每个模型 — 请求、令牌与费用（omp stats 数据）', close:'关闭', searchPh:'搜索代理或团队…', secQuota:'提供商配额', secEnv:'环境（背景）', tasksT:'任务（人性化）', logT:'日志（人性化）', rawLbl:'查看原文', camIso:'等距', camTop:'俯视', mode2d:'2D 模式', panelT:'面板', hintT:'拖动平移 · 滚动缩放 · 点击代理查看详情', zoneAll:'整个办公室', zoneClaude:'Claude 工作室', zoneOmp:'OMP 房间', zoneWorkers:'工作者', zoneCursor:'Cursor', zoneMeeting:'会议室', zoneMcp:'MCP 服务器', navStudio:'工作室', studioT:'工作室', studioSub:'HQ 中工作的主代理 — 来自实时数据，而非示例团队', studioOpen:'打开详情', studioNoMain:'未找到主代理。', sahamEmpty:'尚未连接投资组合。', sahamHow:'在 HQ 数据文件夹中创建 stocks.json（见 docs/SAHAM.md），然后重新打开此面板。文件中的价格是你自己填写的 — 不是实时市场价格，也不显示示例数字。', sahamTotal:'投资组合总额（来自文件）', sahamNote:'价格来自你的文件，不是实时市场价格。', sahamLiveCol:'实时价格（来源、时间）', sahamLive:'实时 · 延迟 15–20 分钟，截至 15:00 WIB，{time} WIB 获取（EODHD）', sahamDelayed:'收盘 {date}，{time} WIB 获取（{src}）', sahamStale:'最后数据 {date}', sahamNoKey:'实时价格尚未配置（EODHD_API_KEY/FMP_API_KEY 为空）— 实时列留空，不显示虚构数字。', sahamLiveFootnote:'实时价格列（IDX 使用 EODHD，其他交易所使用 FMP）仅为展示 — 你的 stocks.json 永远不会被覆盖。', navStocks:'股票', navKnow:'知识库', navPerf:'绩效', perfT:'绩效工作区', perfSub:'单个代理的进度与任务 — 来自真实 HQ 任务数据，而非示例', perfAgentLbl:'代理', perfSearchPh:'搜索任务…', perfRun:'进行中', perfWait:'等待审核', perfDone:'已完成', perfFail:'需要检查', perfOpen:'打开任务', perfNoTasks:'该代理暂无任务记录。', perfDetail:'打开代理详情', sahamT:'股票', sahamSub:'你的文件价格，外加可选的实时价格列（EODHD/FMP）', portoT:'投资组合（你的持仓）', portoEmpty:'暂无持仓。添加第一个持仓 — 价格来自实时缓存，持仓绝不从自选列表推测。', portoPositions:'持仓', portoPriced:'有价', portoValue:'市值', portoPnl:'盈亏', portoDay:'今日', portoGrand:'总计（印尼盾）', portoSym:'代码', portoShares:'股数', portoLots:'手（1手=100股）', portoAvg:'平均买入价', portoBought:'买入日期', portoNote:'备注', portoSave:'保存持仓', portoUpdate:'更新持仓', portoCancel:'取消', portoEdit:'编辑', portoDel:'删除', portoDelConfirm:'删除持仓 {s}？快照历史会保留。', portoSaved:'持仓已保存。', portoDeleted:'持仓已删除。', portoSnap:'保存今日快照', portoSnapOk:'今日快照已保存。', portoFxT:'美元兑印尼盾汇率（手动）', portoFxHint:'印尼盾总计不可用 — 请填写美元兑印尼盾汇率。', portoFxNeed:'请填写汇率和日期。', portoFxRate:'汇率（每$1印尼盾）', portoFxAsof:'汇率日期', portoFxSave:'保存汇率', portoLive:'实时价', portoNoPrice:'暂无价格', portoNoBuy:'未填买入价', portoNoPrev:'无前收盘价（EOD）', portoNeedStocks:'请先在 stocks.json（股票面板）中添加该代码。', knowT:'知识库', knowSub:'该模块尚未连接任何文档源',
     kpiReq:'已记录的 OMP 请求', kpiTok:'令牌（入+出）', kpiCash:'现金成本', kpiShadow:'影子成本（订阅）', kpiBal:'DeepSeek 余额估算', working:'工作中', ofAgents:'共显示 {n} 个代理', allSafe:'没有活动警报，一切正常。', ack:'已处理', snooze:'推迟', since:'自', agentW:'代理', colRun:'进行中', colWait:'等待 Rizal', colDone:'已完成', colFail:'失败',
     mModel:'模型', mProvider:'提供商', mReq:'请求', mTokIn:'输入令牌', mCost:'费用', mClass:'类别', mShare:'占比', mFailed:'失败', mOut:'输出', mCache:'缓存', mCash:'现金', mShadow:'影子', modelsEmpty:'暂无模型数据 — 尚未读取 OMP stats。', modelsNote:'现金类 = 真实支出（DeepSeek API 与付费网关模型）。影子类 = 订阅提供商的 API 等值费用，并非新账单（OpenCode Go 属于影子 — $10/月固定套餐的计量额度）。免费 = $0 模型。按费用从高到低排序。',
     clsTunai:'现金', clsBayangan:'影子', clsGratis:'免费', tabSummary:'概要', tabTasks:'任务', tabLog:'日志', tabUsage:'用量', tabSessions:'会话与文件', toastAck:'警报已标记为已处理 — 已保存，不会再次出现。', toastSnooze:'警报已推迟 {h} 小时 — 已保存。', toastFail:'警报操作发送失败 — 请检查与 HQ 服务器的连接。', updatedAgo:'{n} 秒前更新', simPauseT:'暂停 / 继续动画', simOrbitT:'相机自动环绕', simFollowT:'相机跟随所选代理', pickAgentFirst:'请先选择一个代理（点击其形象），再开启跟随 🎯', raw:'查看原文' },
