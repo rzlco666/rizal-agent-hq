@@ -1,6 +1,8 @@
 //! hq-server — Rizal Agent HQ (Axum).
 //! REST: /api/state /api/agents /api/alerts /api/history /api/health /api/stocks /api/portfolio
 //! /api/knowledge/* (pencarian + halaman + sync + promote) /api/memory* (B.5)
+//! Ukur performa: log "[perf] refresh ..." tiap siklus + /api/health diperdalam
+//! (DB, saham, memori, disk, durasi refresh terakhir). Lihat docs/PERF.md.
 //! POST /api/heartbeat (agent eksternal), POST /api/alerts/:id/ack|snooze,
 //! POST /api/stocks/refresh (harga live, hormati gerbang harian)
 //! Statis: folder web/ (kantor 3D). Penyimpanan: SQLite (snapshot & alert).
@@ -44,6 +46,30 @@ struct AppState {
     /// Pengetahuan dari Notion: cermin sync + memori B.5 (hanya candidate
     /// yang ditulis sync; trusted hanya lewat promosi manusia).
     notion: Arc<notion_knowledge::NotionHandle>,
+    /// Waktu start proses (untuk uptime di /api/health).
+    started_at: std::time::Instant,
+    /// Hasil ukur siklus refresh terakhir (durasi per kolektor).
+    last_perf: RwLock<PerfSnapshot>,
+}
+
+/// Hasil ukur satu siklus `refresh()` — diisi tiap siklus, dibaca /api/health.
+/// Semua durasi dalam milidetik. Nilai 0 pada kolektor = cache masih segar.
+#[derive(Default, Clone)]
+struct PerfSnapshot {
+    total_ms: u64,
+    collect_ms: u64,
+    system_ms: u64,
+    docker_ms: u64,
+    tailscale_ms: u64,
+    git_ms: u64,
+    processes_ms: u64,
+    tmux_ms: u64,
+    omp_stats_ms: u64,
+    omp_usage_ms: u64,
+    sessions_ms: u64,
+    sources_ms: u64,
+    alert_ms: u64,
+    db_ms: u64,
 }
 
 /// Satu pekerjaan perapi LLM (K2-C lapisan 4).
@@ -168,12 +194,22 @@ Judul asli: {title}
 Detail: {detail}"
         );
         let mut result = None;
+        let mut used_model = "";
+        let t_llm = std::time::Instant::now();
         for m in &models {
             if let Some(r) = run_omp_prompt(m, &prompt) {
                 result = Some(r);
+                used_model = m;
                 break;
             }
         }
+        println!(
+            "[perf] llm task={} model={} dur_ms={} ok={}",
+            job.task_id,
+            used_model,
+            t_llm.elapsed().as_millis(),
+            result.is_some()
+        );
         if let Some(text) = result {
             if let Some(db) = &db {
                 let _ = db.execute(
@@ -236,11 +272,15 @@ fn db_init(path: &str) -> rusqlite::Connection {
 }
 
 async fn refresh(st: &AppState) {
+    let t_total = std::time::Instant::now();
     let prev_agents = st.snap.read().await.agents.clone();
+    let t_collect = std::time::Instant::now();
     let mut collect = st.collect.write().await;
-    let mut snap = hq_collect::collect_snapshot(&mut collect);
+    let (mut snap, timings) = hq_collect::collect_snapshot(&mut collect);
+    let collect_ms = t_collect.elapsed().as_millis() as u64;
     drop(collect);
 
+    let t_alert = std::time::Instant::now();
     let evaluated = hq_alert::evaluate(&snap, &prev_agents);
     let mut alerts_lock = st.alerts.write().await;
     *alerts_lock = hq_alert::reconcile(alerts_lock.clone(), evaluated);
@@ -276,6 +316,7 @@ async fn refresh(st: &AppState) {
         }
     }
     snap.alerts = alerts;
+    let alert_ms = t_alert.elapsed().as_millis() as u64;
     // Perapi LLM (K2-C lapisan 4): judul sesi mentah yang panjang dirapikan
     // model $0 di latar; selama belum siap, template tetap tampil (fallback).
     if let Some(tx) = &st.llm_tx {
@@ -314,6 +355,7 @@ async fn refresh(st: &AppState) {
     }
 
     // Simpan snapshot ringkas (± tiap siklus; query riwayat mengambil sampel).
+    let t_db = std::time::Instant::now();
     if let Ok(db) = st.db.lock() {
         for a in &snap.alerts {
             persist_alert(&db, a);
@@ -351,6 +393,37 @@ async fn refresh(st: &AppState) {
             ],
         );
     }
+    let db_ms = t_db.elapsed().as_millis() as u64;
+    let total_ms = t_total.elapsed().as_millis() as u64;
+    *st.last_perf.write().await = PerfSnapshot {
+        total_ms,
+        collect_ms,
+        system_ms: timings.system_ms,
+        docker_ms: timings.docker_ms,
+        tailscale_ms: timings.tailscale_ms,
+        git_ms: timings.git_ms,
+        processes_ms: timings.processes_ms,
+        tmux_ms: timings.tmux_ms,
+        omp_stats_ms: timings.omp_stats_ms,
+        omp_usage_ms: timings.omp_usage_ms,
+        sessions_ms: timings.sessions_ms,
+        sources_ms: timings.sources_ms,
+        alert_ms,
+        db_ms,
+    };
+    println!(
+        "[perf] refresh total={total_ms}ms collect={collect_ms}ms sys={}ms docker={}ms ts={}ms git={}ms ps={}ms tmux={}ms omp_stats={}ms omp_usage={}ms sessions={}ms sources={}ms alert={alert_ms}ms db={db_ms}ms",
+        timings.system_ms,
+        timings.docker_ms,
+        timings.tailscale_ms,
+        timings.git_ms,
+        timings.processes_ms,
+        timings.tmux_ms,
+        timings.omp_stats_ms,
+        timings.omp_usage_ms,
+        timings.sessions_ms,
+        timings.sources_ms,
+    );
 }
 
 #[derive(Deserialize)]
@@ -509,6 +582,106 @@ async fn get_history(
         }
     }
     Json(serde_json::json!({ "history": rows }))
+}
+
+/// Baca VmRSS + VmHWM (puncak) proses sendiri dari /proc/self/status (kB -> MB).
+fn parse_mem_status(text: &str) -> (Option<f64>, Option<f64>) {
+    let get = |k: &str| -> Option<f64> {
+        text.lines()
+            .find(|l| l.starts_with(k))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<f64>().ok())
+            .map(|kb| (kb / 1024.0 * 10.0).round() / 10.0)
+    };
+    (get("VmRSS:"), get("VmHWM:"))
+}
+
+fn read_self_mem() -> (Option<f64>, Option<f64>) {
+    std::fs::read_to_string("/proc/self/status")
+        .map(|t| parse_mem_status(&t))
+        .unwrap_or((None, None))
+}
+
+/// "2026-11-07T15:00:00+07:00" (format `iso_wib`) -> epoch ms sejati.
+/// `iso_to_ms` menghitung waktu dinding sebagai UTC, jadi koreksi -7 jam.
+fn wib_iso_to_ms(s: &str) -> Option<i64> {
+    hq_collect::sessions::iso_to_ms(s).map(|ms| ms - 7 * 3600 * 1000)
+}
+
+/// GET /api/health — diperdalam (riset performa 2026-11-07, M3): liveness di
+/// `ok`, plus DB, saham, memori, disk, dan hasil ukur refresh terakhir.
+/// Tidak memanggil subprocess apa pun; DB dicek via try_lock (sibuk = ok:false).
+async fn get_health(State(st): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let now = now_ms();
+    let today = wib_date(now);
+    let (db_ok, db_err, snap_rows, llm_rows) = match st.db.try_lock() {
+        Ok(db) => {
+            let snaps: Result<i64, _> =
+                db.query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0));
+            let llms: Result<i64, _> =
+                db.query_row("SELECT COUNT(*) FROM llm_summaries", [], |r| r.get(0));
+            match (snaps, llms) {
+                (Ok(s), Ok(l)) => (true, None, Some(s), Some(l)),
+                _ => (false, Some("query gagal".to_string()), None, None),
+            }
+        }
+        Err(_) => (false, Some("db sibuk".to_string()), None, None),
+    };
+    let cache = stocks_price::load_cache(&st.data_dir);
+    let mut fresh = 0usize;
+    let mut max_fetch: Option<(i64, String, String)> = None; // (epoch, fetched_at, source)
+    for q in cache.symbols.values() {
+        if q.last_fetch_wib_date == today {
+            fresh += 1;
+        }
+        if let Some(ms) = wib_iso_to_ms(&q.fetched_at) {
+            if max_fetch.as_ref().map(|(m, _, _)| ms > *m).unwrap_or(true) {
+                max_fetch = Some((ms, q.fetched_at.clone(), q.source.clone()));
+            }
+        }
+    }
+    let (rss_mb, peak_mb) = read_self_mem();
+    let perf = st.last_perf.read().await.clone();
+    let disk_percent = st.snap.read().await.env.disk_percent;
+    Json(serde_json::json!({
+        "ok": true,
+        "at": now,
+        "app": "rizal-agent-hq",
+        "version": env!("CARGO_PKG_VERSION"),
+        "uptime_secs": st.started_at.elapsed().as_secs(),
+        "db": {
+            "ok": db_ok,
+            "error": db_err,
+            "snapshots": snap_rows,
+            "llm_summaries": llm_rows,
+        },
+        "stocks": {
+            "fresh": fresh > 0,
+            "symbols": cache.symbols.len(),
+            "fresh_symbols": fresh,
+            "age_secs": max_fetch.as_ref().map(|(ms, _, _)| (now - ms).max(0) / 1000),
+            "last_fetch": max_fetch.as_ref().map(|(_, f, _)| f.clone()),
+            "source": max_fetch.as_ref().map(|(_, _, s)| s.clone()),
+        },
+        "mem": { "rss_mb": rss_mb, "peak_mb": peak_mb },
+        "disk": { "percent": disk_percent },
+        "perf": {
+            "refresh_total_ms": perf.total_ms,
+            "collect_ms": perf.collect_ms,
+            "system_ms": perf.system_ms,
+            "docker_ms": perf.docker_ms,
+            "tailscale_ms": perf.tailscale_ms,
+            "git_ms": perf.git_ms,
+            "processes_ms": perf.processes_ms,
+            "tmux_ms": perf.tmux_ms,
+            "omp_stats_ms": perf.omp_stats_ms,
+            "omp_usage_ms": perf.omp_usage_ms,
+            "sessions_ms": perf.sessions_ms,
+            "sources_ms": perf.sources_ms,
+            "alert_ms": perf.alert_ms,
+            "db_ms": perf.db_ms,
+        },
+    }))
 }
 
 /// GET /api/portfolio — posisi + hitung dari cache (satu-satunya sumber hitung;
@@ -879,6 +1052,13 @@ async fn ws_handler(
 
 #[tokio::main]
 async fn main() {
+    // Profiling tokio-console (fitur `console`, hanya bila HQ_CONSOLE=1):
+    // butuh build dengan RUSTFLAGS="--cfg tokio_unstable" supaya tokio
+    // mengemisikan instrumentasi task. Jangan aktifkan di service live.
+    #[cfg(feature = "console")]
+    if env_or("HQ_CONSOLE", "") == "1" {
+        console_subscriber::init();
+    }
     let port: u16 = env_or("HQ_PORT", "8900").parse().unwrap_or(8900);
     let bind = env_or("HQ_BIND", "127.0.0.1");
     let interval: u64 = env_or("HQ_INTERVAL", "6").parse().unwrap_or(30);
@@ -957,6 +1137,8 @@ async fn main() {
         alert_saved: std::sync::Mutex::new(alert_saved_map),
         stocks: stocks_price::StocksHandle::from_env(&data_dir),
         notion: notion_knowledge::NotionHandle::from_env(&data_dir),
+        started_at: std::time::Instant::now(),
+        last_perf: RwLock::new(PerfSnapshot::default()),
     });
 
     refresh(&st).await;
@@ -1049,12 +1231,7 @@ async fn main() {
             "/api/memory/{id}/delete",
             post(notion_knowledge::post_memory_delete),
         )
-        .route(
-            "/api/health",
-            get(|| async {
-                Json(serde_json::json!({ "ok": true, "at": now_ms(), "app": "rizal-agent-hq" }))
-            }),
-        )
+        .route("/api/health", get(get_health))
         .route("/ws", get(ws_handler))
         .route("/api/heartbeat", post(post_heartbeat))
         .route("/api/alerts/{id}/ack", post(alert_ack))
@@ -1067,4 +1244,37 @@ async fn main() {
         .expect("bind");
     println!("Rizal Agent HQ jalan di http://{bind}:{port}/ (interval {interval}s)");
     axum::serve(listener, app).await.expect("serve");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_mem_status_membaca_rss_dan_peak() {
+        let text =
+            "Name:\trizal-agent-hq\nVmRSS:\t172032 kB\nVmHWM:\t1048576 kB\nVmSize:\t123456 kB\n";
+        let (rss, peak) = parse_mem_status(text);
+        assert_eq!(rss, Some(168.0));
+        assert_eq!(peak, Some(1024.0));
+        assert_eq!(parse_mem_status("tidak ada baris memori"), (None, None));
+    }
+
+    #[test]
+    fn wib_iso_to_ms_balik_iso_wib() {
+        // iso_wib berpresisi detik, jadi round-trip hanya berlaku untuk
+        // nilai kelipatan 1000; milidetik terpotong (fetched_at memang per detik).
+        for t in [0i64, 1_793_954_460_000, 1_794_000_000_000] {
+            assert_eq!(
+                wib_iso_to_ms(&stocks_price::iso_wib(t)),
+                Some(t),
+                "round-trip gagal untuk {t}"
+            );
+        }
+        assert_eq!(
+            wib_iso_to_ms(&stocks_price::iso_wib(1_794_000_000_123)),
+            Some(1_794_000_000_000)
+        );
+        assert_eq!(wib_iso_to_ms("bukan-iso"), None);
+    }
 }

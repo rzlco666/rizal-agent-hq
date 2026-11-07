@@ -21,6 +21,32 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+/// Durasi (ms) tiap fase `collect_snapshot` — alat ukur B1 (riset performa
+/// 2026-11-07). Nilai 0 = fase itu tidak jalan pada siklus ini (cache masih
+/// segar: tailscale 30 dtk, omp stats 60 dtk, omp usage 5 mnt).
+#[derive(Default, Clone, Copy, Debug)]
+pub struct CollectTimings {
+    pub total_ms: u64,
+    pub system_ms: u64,
+    pub docker_ms: u64,
+    pub tailscale_ms: u64,
+    pub git_ms: u64,
+    pub processes_ms: u64,
+    pub tmux_ms: u64,
+    pub omp_stats_ms: u64,
+    pub omp_usage_ms: u64,
+    pub sessions_ms: u64,
+    pub sources_ms: u64,
+}
+
+/// Durasi bagian mahal di dalam sumber `omp` (diisi `src_omp`).
+#[derive(Default, Clone, Copy, Debug)]
+pub struct SourceTimings {
+    pub omp_stats_ms: u64,
+    pub omp_usage_ms: u64,
+    pub sessions_ms: u64,
+}
+
 /// Jalankan perintah dengan batas waktu; None bila gagal/timeout.
 pub fn run_timeout(cmd: &str, args: &[&str], timeout_ms: u64) -> Option<String> {
     let mut child = Command::new(cmd)
@@ -326,6 +352,10 @@ pub struct OmpCache {
     pub stats: Option<omp::OmpStats>,
     pub quotas: Vec<Quota>,
     pub quotas_at: i64,
+    /// Durasi (ms) panggilan `omp stats` / `omp usage` TERAKHIR; 0 bila cache
+    /// masih segar sehingga perintah tidak dijalankan pada siklus ini.
+    pub last_stats_ms: u64,
+    pub last_usage_ms: u64,
 }
 
 pub fn collect_omp(cache: &mut OmpCache, force: bool) {
@@ -338,14 +368,19 @@ pub fn collect_omp(cache: &mut OmpCache, force: bool) {
         return;
     }
     if force || !stats_fresh {
+        let t0 = Instant::now();
         if let Some(st) =
             run_timeout("omp", &["stats", "--json"], 45000).and_then(|t| omp::parse_stats(&t))
         {
             cache.stats = Some(st);
             cache.at = now;
         }
+        cache.last_stats_ms = t0.elapsed().as_millis() as u64;
+    } else {
+        cache.last_stats_ms = 0;
     }
     if force || !quotas_fresh {
+        let t0 = Instant::now();
         let q = run_timeout("omp", &["usage"], 45000)
             .map(|t| omp::parse_usage(&t))
             .unwrap_or_default();
@@ -353,6 +388,9 @@ pub fn collect_omp(cache: &mut OmpCache, force: bool) {
             cache.quotas = q;
             cache.quotas_at = now;
         }
+        cache.last_usage_ms = t0.elapsed().as_millis() as u64;
+    } else {
+        cache.last_usage_ms = 0;
     }
 }
 
@@ -398,6 +436,8 @@ pub struct SourceOut {
     pub quotas: Option<Vec<Quota>>,
     pub total_usage: Option<Usage>,
     pub deepseek_balance: Option<f64>,
+    /// Durasi bagian mahal (hanya sumber omp yang mengisi).
+    pub timings: SourceTimings,
 }
 
 pub type SourceFn = fn(&mut CollectState, &Probes) -> SourceOut;
@@ -463,8 +503,12 @@ fn src_omp(state: &mut CollectState, pr: &Probes) -> SourceOut {
     collect_omp(&mut state.omp_cache, false);
     let stats = state.omp_cache.stats.clone().unwrap_or_default();
     let mut out = SourceOut::default();
+    out.timings.omp_stats_ms = state.omp_cache.last_stats_ms;
+    out.timings.omp_usage_ms = state.omp_cache.last_usage_ms;
 
+    let t_sess = Instant::now();
     let mut sessions = sessions::collect_sessions(now, 24 * 3600 * 1000, 40);
+    out.timings.sessions_ms = t_sess.elapsed().as_millis() as u64;
     sessions.sort_by_key(|s| std::cmp::Reverse(s.last_ms));
     // Sesi internal HQ sendiri (panggilan perapi LLM) bukan pekerjaan Rizal —
     // jangan tampilkan sebagai agen/tugas.
@@ -1111,15 +1155,23 @@ fn src_mcp(_state: &mut CollectState, pr: &Probes) -> SourceOut {
 }
 
 /// Bangun snapshot lengkap: probe dasar sekali, lalu jalankan semua sumber aktif.
-pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
+pub fn collect_snapshot(state: &mut CollectState) -> (Snapshot, CollectTimings) {
+    let t_total = Instant::now();
     let now = now_ms();
     let mut cpu = state.cpu_state;
+    let t0 = Instant::now();
     let sys = collect_system(&mut cpu);
+    let system_ms = t0.elapsed().as_millis() as u64;
     state.cpu_state = cpu;
+    let t0 = Instant::now();
     let (docker_up, docker_down) = collect_docker();
+    let docker_ms = t0.elapsed().as_millis() as u64;
+    let mut tailscale_ms = 0u64;
+    let mut git_ms = 0u64;
     let (muse_online, commits) = if now - state.probe_cache.0 < 30_000 && state.probe_cache.0 > 0 {
         (state.probe_cache.1, state.probe_cache.2.clone())
     } else {
+        let t_ts = Instant::now();
         let mo = run_timeout("tailscale", &["status", "--json"], 5000)
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
             .and_then(|j| {
@@ -1134,15 +1186,24 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
                     })
                     .and_then(|p| p.get("Online").and_then(|o| o.as_bool()))
             });
+        tailscale_ms = t_ts.elapsed().as_millis() as u64;
+        let t_git = Instant::now();
         let cm = collect_git();
+        git_ms = t_git.elapsed().as_millis() as u64;
         state.probe_cache = (now, mo, cm.clone());
         (mo, cm)
     };
+    let t0 = Instant::now();
+    let procs = collect_processes();
+    let processes_ms = t0.elapsed().as_millis() as u64;
+    let t0 = Instant::now();
+    let tmux = collect_tmux();
+    let tmux_ms = t0.elapsed().as_millis() as u64;
     let pr = Probes {
         now,
-        procs: collect_processes(),
+        procs,
         sys,
-        tmux: collect_tmux(),
+        tmux,
         docker_up,
         docker_down,
         commits,
@@ -1154,11 +1215,18 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
         generated_at: now,
         ..Default::default()
     };
+    let t_src = Instant::now();
+    let mut omp_stats_ms = 0u64;
+    let mut omp_usage_ms = 0u64;
+    let mut sessions_ms = 0u64;
     for (id, f) in registry() {
         if !source_enabled(id) {
             continue;
         }
         let o = f(state, &pr);
+        omp_stats_ms += o.timings.omp_stats_ms;
+        omp_usage_ms += o.timings.omp_usage_ms;
+        sessions_ms += o.timings.sessions_ms;
         snap.agents.extend(o.agents);
         snap.tasks.extend(o.tasks);
         snap.events.extend(o.events);
@@ -1235,7 +1303,22 @@ pub fn collect_snapshot(state: &mut CollectState) -> Snapshot {
         recent_commits: pr.commits.clone(),
         tailscale_muse_online: pr.muse_online,
     };
-    snap
+    (
+        snap,
+        CollectTimings {
+            total_ms: t_total.elapsed().as_millis() as u64,
+            system_ms,
+            docker_ms,
+            tailscale_ms,
+            git_ms,
+            processes_ms,
+            tmux_ms,
+            omp_stats_ms,
+            omp_usage_ms,
+            sessions_ms,
+            sources_ms: t_src.elapsed().as_millis() as u64,
+        },
+    )
 }
 
 /// Peta kehadiran agent untuk hq-alert.
@@ -1250,6 +1333,22 @@ pub fn agent_presence(procs: &[Proc]) -> HashMap<&'static str, bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collect_snapshot_mengembalikan_timings() {
+        // Matikan sumber omp supaya uji tidak menunggu `omp stats/usage`
+        // (timeout 45 dtk tiap perintah); plumbing timing tetap teruji.
+        std::env::set_var("HQ_DISABLE_SOURCES", "omp");
+        let mut state = CollectState::default();
+        let (_snap, t) = collect_snapshot(&mut state);
+        std::env::remove_var("HQ_DISABLE_SOURCES");
+        assert!(t.total_ms > 0);
+        assert!(t.system_ms <= t.total_ms);
+        assert!(t.docker_ms <= t.total_ms);
+        assert!(t.processes_ms <= t.total_ms);
+        assert!(t.tmux_ms <= t.total_ms);
+        assert!(t.sources_ms <= t.total_ms);
+    }
 
     #[test]
     fn registry_punya_lima_sumber() {

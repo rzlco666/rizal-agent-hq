@@ -20,3 +20,9 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rusqlite = { version = "0.41", features = ["bundled"] }
 sha2 = "0.10"
 tower-http = { version = "0.7", features = ["fs"] }
+console-subscriber = { version = "0.4", optional = true }
+
+[features]
+# Profiling tokio-console: `cargo build --features console` + HQ_CONSOLE=1 +
+# RUSTFLAGS="--cfg tokio_unstable". Bukan bagian service live.
+console = ["tokio/tracing", "dep:console-subscriber"]
