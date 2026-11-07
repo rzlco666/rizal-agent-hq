@@ -365,6 +365,10 @@ pub fn collect_omp(cache: &mut OmpCache, force: bool) {
     let stats_fresh = cache.stats.is_some() && now - cache.at < 60_000;
     let quotas_fresh = !cache.quotas.is_empty() && now - cache.quotas_at < 5 * 60 * 1000;
     if !force && stats_fresh && quotas_fresh {
+        // Cache segar: perintah tidak jalan — nol-kan durasi terakhir supaya
+        // siklus hangat tidak menampilkan angka basi dari siklus sebelumnya.
+        cache.last_stats_ms = 0;
+        cache.last_usage_ms = 0;
         return;
     }
     if force || !stats_fresh {
