@@ -8,7 +8,8 @@
 //! - Hari bursa Senin–Jumat. Live sekali sehari >= 15:00 WIB; bila Live gagal bukan
 //!   karena kuota (jaringan/5xx), satu percobaan EOD >= 16:05 WIB di hari yang sama.
 //! - Harga di `stocks.json` TIDAK PERNAH ditimpa; cache di `stocks_cache.json`.
-//! - Rute: tanpa sufiks atau `.JK` -> EODHD; sufiks lain (mis. `.US`) -> FMP.
+//! - Rute: tanpa sufiks, `.JK`, atau `.US` -> EODHD; sufiks lain (mis. `.DE`) -> FMP.
+//!   Saham US wajib pakai sufiks `.US` eksplisit (tanpa sufiks = IDX).
 
 use hq_core::timefmt::{now_ms, wib_date, wib_hms};
 use serde::{Deserialize, Serialize};
@@ -133,19 +134,27 @@ pub fn symbol_parts(sym: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Tanpa sufiks atau `.JK` -> EODHD; sufiks lain -> FMP.
+/// Tanpa sufiks, `.JK`, atau `.US` -> EODHD; sufiks lain -> FMP.
+/// EODHD paket gratis mencakup bursa US (terverifikasi: real-time + EOD
+/// NVDA.US/TSM.US/TSLA.US kembali data); FMP paket saat ini 402.
 pub fn route(sym: &str) -> Provider {
     match symbol_parts(sym).1 {
         None => Provider::Eodhd,
         Some(s) if s.eq_ignore_ascii_case("jk") => Provider::Eodhd,
+        Some(s) if s.eq_ignore_ascii_case("us") => Provider::Eodhd,
         Some(_) => Provider::Fmp,
     }
 }
 
-/// Kode EODHD: BBCA -> BBCA.JK, BBCA.JK -> BBCA.JK.
+/// Kode EODHD: BBCA -> BBCA.JK, BBCA.JK -> BBCA.JK, NVDA.US -> NVDA.US.
+/// Tanpa sufiks = IDX (`.JK`); sufiks `.US` dipertahankan.
 pub fn eodhd_code(sym: &str) -> String {
-    let base = symbol_parts(sym).0;
-    format!("{}.JK", base.to_ascii_uppercase())
+    let (base, suffix) = symbol_parts(sym);
+    let base = base.to_ascii_uppercase();
+    match suffix {
+        Some(s) if s.eq_ignore_ascii_case("us") => format!("{base}.US"),
+        _ => format!("{base}.JK"),
+    }
 }
 
 // --------------------------------------------------------------- pilih simbol
@@ -669,7 +678,7 @@ impl StocksHandle {
         // --- L1: EODHD (Live, atau EOD bila Live gagal non-kuota) ---
         if !eodhd_syms.is_empty() {
             if self.cfg.eodhd_key.is_none() {
-                notes.push("EODHD_API_KEY kosong — simbol .JK dilewati".into());
+                notes.push("EODHD_API_KEY kosong — simbol EODHD dilewati".into());
             } else {
                 match self.quota_guard().await {
                     Ok(g) => {
@@ -734,10 +743,10 @@ impl StocksHandle {
             }
         }
 
-        // --- L2: FMP (khusus non-.JK) ---
+        // --- L2: FMP (khusus simbol non-EODHD) ---
         if !fmp_syms.is_empty() {
             if self.cfg.fmp_key.is_none() {
-                notes.push("FMP_API_KEY kosong — simbol non-.JK dilewati".into());
+                notes.push("FMP_API_KEY kosong — simbol FMP dilewati".into());
             } else {
                 for (i, sym) in fmp_syms.iter().enumerate() {
                     if i > 0 {
@@ -1060,10 +1069,18 @@ mod tests {
         assert_eq!(route("BBCA"), Provider::Eodhd);
         assert_eq!(route("BBCA.JK"), Provider::Eodhd);
         assert_eq!(route("tlkm.jk"), Provider::Eodhd);
-        assert_eq!(route("AAPL.US"), Provider::Fmp);
+        assert_eq!(route("AAPL.US"), Provider::Eodhd);
+        assert_eq!(route("NVDA.US"), Provider::Eodhd);
+        assert_eq!(route("TSM.US"), Provider::Eodhd);
+        assert_eq!(route("TSLA.US"), Provider::Eodhd);
+        assert_eq!(route("nvda.us"), Provider::Eodhd);
         assert_eq!(route("SAP.DE"), Provider::Fmp);
         assert_eq!(eodhd_code("BBCA"), "BBCA.JK");
         assert_eq!(eodhd_code("BBCA.JK"), "BBCA.JK");
+        assert_eq!(eodhd_code("NVDA.US"), "NVDA.US");
+        assert_eq!(eodhd_code("TSM.US"), "TSM.US");
+        assert_eq!(eodhd_code("TSLA.US"), "TSLA.US");
+        assert_eq!(eodhd_code("nvda.us"), "NVDA.US");
         assert_eq!(symbol_parts("BBCA"), ("BBCA", None));
     }
 

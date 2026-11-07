@@ -27,7 +27,9 @@ menyesatkan — kamu bisa mengira itu portofolio nyata.
 ```
 
 - `symbol`: wajib, string. Tanpa sufiks atau `.JK` = bursa Indonesia (EODHD);
-  sufiks lain (mis. `.US`) = bursa luar (FMP). `BBCA` dan `BBCA.JK` setara.
+  `.US` = bursa Amerika (EODHD juga — paket gratis mencakup US, terverifikasi
+  2026-11-07); sufiks lain (mis. `.DE`) = bursa luar (FMP). `BBCA` dan
+  `BBCA.JK` setara. Saham US wajib pakai sufiks `.US` eksplisit.
 - `name`: opsional, string.
 - `shares`: wajib, angka (boleh desimal).
 - `price`: wajib, angka, dalam mata uang `currency`.
@@ -38,9 +40,9 @@ menyesatkan — kamu bisa mengira itu portofolio nyata.
 
 | Lapis | Sumber | Dipakai untuk | Kapan |
 |---|---|---|---|
-| L1 | EODHD Live (`/api/real-time`) | simbol IDX (`.JK`/tanpa sufiks) | sekali sehari >= 15:00 WIB, satu permintaan batch |
-| L1b | EODHD EOD (`/api/eod`) | simbol IDX | hanya bila Live gagal **bukan** karena kuota (jaringan/5xx): satu percobaan >= 16:05 WIB hari yang sama |
-| L2 | FMP (`/stable/quote`) | simbol non-IDX (mis. `.US`) | jadwal harian yang sama; FMP **tidak pernah** dipanggil untuk simbol `.JK` (fitur berbayar) |
+| L1 | EODHD Live (`/api/real-time`) | simbol IDX (`.JK`/tanpa sufiks) dan `.US` | sekali sehari >= 15:00 WIB, satu permintaan batch |
+| L1b | EODHD EOD (`/api/eod`) | simbol IDX dan `.US` | hanya bila Live gagal **bukan** karena kuota (jaringan/5xx): satu percobaan >= 16:05 WIB hari yang sama |
+| L2 | FMP (`/stable/quote`) | simbol non-IDX non-`.US` (mis. `.DE`) | jadwal harian yang sama; FMP **tidak pernah** dipanggil untuk simbol `.JK`/`.US` (paket saat ini 402) |
 | L3 | cache terakhir | semua | kuota habis (402), gagal total, 429 menetap, akhir pekan/libur |
 
 Aturan waktu:

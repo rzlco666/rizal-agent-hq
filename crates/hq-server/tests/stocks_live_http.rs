@@ -97,9 +97,17 @@ fn handle(stream: &mut TcpStream, hits: &Arc<Mutex<Vec<String>>>, mode: &Arc<Ato
             respond(stream, 402, r#"{"error":"quota reached"}"#);
             return;
         }
-        let body = format!(
-            r#"{{"BBCA.JK":{{"code":"BBCA.JK","timestamp":{LIVE_TS},"close":5025,"previousClose":5000}},"TLKM.JK":{{"code":"TLKM.JK","timestamp":{LIVE_TS},"close":3100}}}}"#
-        );
+        // Mode 2: fixture .US — EODHD Live mengembalikan simbol US
+        // (penutupan Jumat 2026-11-06, terverifikasi ke API asli).
+        let body = if mode.load(Ordering::SeqCst) == 2 {
+            format!(
+                r#"{{"BBCA.JK":{{"code":"BBCA.JK","timestamp":{LIVE_TS},"close":5025,"previousClose":5000}},"NVDA.US":{{"code":"NVDA.US","timestamp":{LIVE_TS},"close":186.64,"previousClose":181.6}}}}"#
+            )
+        } else {
+            format!(
+                r#"{{"BBCA.JK":{{"code":"BBCA.JK","timestamp":{LIVE_TS},"close":5025,"previousClose":5000}},"TLKM.JK":{{"code":"TLKM.JK","timestamp":{LIVE_TS},"close":3100}}}}"#
+            )
+        };
         respond(stream, 200, &body);
     } else if path.starts_with("/api/eod/") {
         respond(
@@ -111,7 +119,7 @@ fn handle(stream: &mut TcpStream, hits: &Arc<Mutex<Vec<String>>>, mode: &Arc<Ato
         respond(
             stream,
             200,
-            r#"[{"symbol":"AAPL.US","price":190.5,"exchange":"NASDAQ"}]"#,
+            r#"[{"symbol":"SAP.DE","price":190.5,"exchange":"XETRA"}]"#,
         );
     } else {
         respond(stream, 404, "{}");
@@ -151,7 +159,7 @@ fn write_stocks(dir: &Path) {
     let body = r#"[
   {"symbol": "BBCA", "name": "Bank Central Asia", "shares": 100, "price": 9000, "currency": "IDR"},
   {"symbol": "TLKM", "name": "Telkom Indonesia", "shares": 500, "price": 3100, "currency": "IDR"},
-  {"symbol": "AAPL.US", "name": "Apple", "shares": 2, "price": 180, "currency": "USD"}
+  {"symbol": "SAP.DE", "name": "SAP", "shares": 2, "price": 180, "currency": "EUR"}
 ]"#;
     std::fs::write(dir.join("stocks.json"), body).unwrap();
 }
@@ -291,9 +299,10 @@ fn satu_kali_refresh_mengisi_cache_lalu_gerbang_harian() {
     assert_eq!(bbca["asof"], MARKET_DATE);
     assert_eq!(bbca["stale"], false);
     assert_eq!(quotes["TLKM"]["price"], 3100.0);
-    let aapl = &quotes["AAPL.US"];
-    assert_eq!(aapl["price"], 190.5);
-    assert_eq!(aapl["source"], "FMP");
+    // SAP.DE tetap lewat FMP (sufiks non-EODHD); .US kini lewat EODHD.
+    let sap = &quotes["SAP.DE"];
+    assert_eq!(sap["price"], 190.5);
+    assert_eq!(sap["source"], "FMP");
     assert!(d["quotes_updated_at"]
         .as_str()
         .unwrap()
@@ -317,13 +326,13 @@ fn satu_kali_refresh_mengisi_cache_lalu_gerbang_harian() {
             "FMP tidak boleh dipanggil dengan simbol .JK: {h}"
         );
         assert!(
-            !(h.starts_with("/api/real-time/") && h.contains("AAPL")),
-            "EODHD tidak boleh dipanggil untuk simbol .US: {h}"
+            !(h.starts_with("/api/real-time/") && h.contains("SAP")),
+            "EODHD tidak boleh dipanggil untuk simbol .DE: {h}"
         );
     }
     assert!(hits
         .iter()
-        .any(|h| h.starts_with("/stable/quote?symbol=AAPL.US")));
+        .any(|h| h.starts_with("/stable/quote?symbol=SAP.DE")));
 
     // Cache: tanpa kunci, gerbang tercatat.
     let cache = std::fs::read_to_string(dir.join("stocks_cache.json")).unwrap();
@@ -339,6 +348,44 @@ fn satu_kali_refresh_mengisi_cache_lalu_gerbang_harian() {
         .unwrap()
         .contains("sudah diambil hari ini"));
     assert_eq!(mock.hits().len(), 3);
+}
+
+#[test]
+fn us_lewat_eodhd_live_bukan_fmp() {
+    // Routing baru: .US lewat EODHD Live (paket gratis mencakup US),
+    // bukan FMP (paket saat ini 402). Mock mode 2 mengembalikan NVDA.US
+    // dari "EODHD" dengan penutupan Jumat 2026-11-06 yang terverifikasi.
+    let mock = Mock::start(2);
+    let dir = tmp_dir("us");
+    std::fs::write(
+        dir.join("stocks.json"),
+        r#"[{"symbol": "BBCA", "shares": 100, "price": 9000, "currency": "IDR"},
+            {"symbol": "NVDA.US", "shares": 2, "price": 180, "currency": "USD"}]"#,
+    )
+    .unwrap();
+    let srv = spawn_server(&dir, &keyed_env(&mock, WEEKDAY, "09:00"));
+
+    let r = post_json(srv.port, "/api/stocks/refresh");
+    assert_eq!(r["refreshed"], true, "{r}");
+    assert!(r["reason"].as_str().unwrap().contains("2 simbol"), "{r}");
+
+    let d = get_json(srv.port, "/api/stocks");
+    let quotes = d["quotes"].as_object().unwrap();
+    assert_eq!(quotes.len(), 2);
+    assert_eq!(quotes["BBCA"]["price"], 5025.0);
+    assert_eq!(quotes["BBCA"]["source"], "EODHD-Live");
+    let nvda = &quotes["NVDA.US"];
+    assert_eq!(nvda["price"], 186.64);
+    assert_eq!(nvda["source"], "EODHD-Live");
+
+    // Kuota: 1 pemeriksaan kuota (gratis) + 1 batch Live; FMP tidak disentuh.
+    let hits = mock.hits();
+    let count = |p: &str| hits.iter().filter(|h| h.starts_with(p)).count();
+    assert_eq!(count("/api/user"), 1);
+    assert_eq!(count("/api/real-time/"), 1);
+    assert_eq!(count("/stable/quote"), 0);
+    assert_eq!(count("/api/eod/"), 0);
+    assert_eq!(hits.len(), 2);
 }
 
 #[test]
