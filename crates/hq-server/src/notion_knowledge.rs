@@ -27,7 +27,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
@@ -823,11 +823,15 @@ impl LiveNotionClient {
             let btype = block.get("type").and_then(Value::as_str).unwrap_or("");
             match btype {
                 "child_page" => {
-                    if let Some(id) = block
-                        .get("child_page")
-                        .and_then(|c| c.get("id"))
-                        .and_then(Value::as_str)
-                    {
+                    // ID halaman anak = ID blok itu sendiri. Objek
+                    // `child_page` API Notion HANYA berisi `title` (tidak
+                    // ada field `id`) — kode lama membaca
+                    // `block.child_page.id` yang selalu None, sehingga walk
+                    // tidak pernah mengikuti satu pun child page (akar
+                    // kegagalan A1 2026-11-07; terbukti lewat probe live:
+                    // fetch_blocks mengembalikan 12 child_page, fetch_page
+                    // mengembalikan 0 children).
+                    if let Some(id) = block.get("id").and_then(Value::as_str) {
                         children.push(id.to_string());
                     }
                 }
@@ -846,11 +850,27 @@ impl LiveNotionClient {
                                         cs.iter().map(|c| rich_text_of(Some(c))).collect::<Vec<_>>()
                                     })
                                     .unwrap_or_default();
+                                // @-mention di dalam sel ikut diikuti walk.
+                                if let Some(cs) = row
+                                    .get("table_row")
+                                    .and_then(|tr| tr.get("cells"))
+                                    .and_then(Value::as_array)
+                                {
+                                    for c in cs {
+                                        children.extend(mention_page_ids(Some(c)));
+                                    }
+                                }
                                 if !cells.iter().all(|c| c.trim().is_empty()) {
                                     lines.push(cells.join(" | "));
                                 }
                             }
                         }
+                    }
+                }
+                "link_to_page" => {
+                    // Tautan eksplisit ke halaman lain (bukan child_page).
+                    if let Some(id) = link_to_page_id(block) {
+                        children.push(id);
                     }
                 }
                 "divider" | "image" | "video" | "file" | "pdf" | "bookmark" | "embed"
@@ -859,6 +879,8 @@ impl LiveNotionClient {
                     if let Some(text) = block_line(block) {
                         lines.push(text);
                     }
+                    // @-mention halaman di dalam teks blok ikut diikuti walk.
+                    children.extend(mention_page_ids(block.get(btype)));
                     // Satu level anak di-inline (mis. isi toggle/list bersarang).
                     if block
                         .get("has_children")
@@ -870,16 +892,20 @@ impl LiveNotionClient {
                             for sb in &sub {
                                 let stype = sb.get("type").and_then(Value::as_str).unwrap_or("");
                                 if stype == "child_page" {
-                                    if let Some(cid) = sb
-                                        .get("child_page")
-                                        .and_then(|c| c.get("id"))
-                                        .and_then(Value::as_str)
-                                    {
+                                    // ID halaman anak = ID blok anak itu
+                                    // sendiri (lihat catatan di arm
+                                    // `child_page` tingkat atas).
+                                    if let Some(cid) = sb.get("id").and_then(Value::as_str) {
                                         children.push(cid.to_string());
                                     }
                                 } else if let Some(text) = block_line(sb) {
                                     lines.push(format!("  {text}"));
                                 }
+                                // @-mention / link_to_page di anak satu level juga diikuti.
+                                if let Some(id) = link_to_page_id(sb) {
+                                    children.push(id);
+                                }
+                                children.extend(mention_page_ids(sb.get(stype)));
                             }
                         }
                     }
@@ -932,6 +958,58 @@ fn rich_text_of(v: Option<&Value>) -> String {
     }
     // Bentuk 3: string polos.
     v.as_str().unwrap_or("").to_string()
+}
+
+/// ID halaman yang ditautkan dari satu nilai rich_text: @-mention halaman
+/// (`{type:"mention", mention:{type:"page", page:{id}}}`) — BUKAN mention
+/// user/tanggal/database. Menerima objek blok (`{rich_text:[...]}`) maupun
+/// array rich_text langsung (sel tabel). Dipakai `flatten_blocks` supaya
+/// walk subtree mengikuti tautan @-mention, bukan hanya `child_page`
+/// (perbaikan A1/A5 2026-11-07: 15 halaman grup StrutStack hanya
+/// tertaut lewat mention dari root dan tidak pernah masuk DB).
+fn mention_page_ids(v: Option<&Value>) -> Vec<String> {
+    let Some(v) = v else {
+        return vec![];
+    };
+    let arr = if let Some(a) = v.get("rich_text").and_then(Value::as_array) {
+        Some(a)
+    } else {
+        v.as_array()
+    };
+    let Some(arr) = arr else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for t in arr {
+        if t.get("type").and_then(Value::as_str) != Some("mention") {
+            continue;
+        }
+        let m = t.get("mention");
+        if m.and_then(|x| x.get("type")).and_then(Value::as_str) != Some("page") {
+            continue;
+        }
+        if let Some(id) = m
+            .and_then(|x| x.get("page"))
+            .and_then(|p| p.get("id"))
+            .and_then(Value::as_str)
+        {
+            out.push(id.to_string());
+        }
+    }
+    out
+}
+
+/// ID halaman dari blok `link_to_page` (tautan eksplisit ke halaman lain).
+/// `database_id` dikembalikan None — baris database dikecualikan (SA §2.3).
+fn link_to_page_id(block: &Value) -> Option<String> {
+    let inner = block.get("link_to_page")?;
+    if inner.get("type").and_then(Value::as_str) != Some("page_id") {
+        return None;
+    }
+    inner
+        .get("page_id")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
 }
 
 impl NotionClient for LiveNotionClient {
@@ -1041,9 +1119,11 @@ impl NotionClient for LiveNotionClient {
     }
 
     async fn list_subtree(&self, root_page_id: &str) -> Result<Vec<PageDoc>, NotionError> {
-        // Walk rekursif dari root lewat blok `child_page` (SA §3.1 langkah 5).
-        // Tiap dokumen diambil SATU kali di sini; engine menyimpan langsung
-        // tanpa fetch ulang.
+        // Walk dari root lewat blok `child_page` PLUS tautan eksplisit
+        // (@-mention halaman + `link_to_page` — SA §3.1 langkah 5,
+        // diperluas 2026-11-07: halaman yang hanya ditautkan lewat mention
+        // tidak pernah masuk DB). Tiap dokumen diambil SATU kali di sini;
+        // engine menyimpan langsung tanpa fetch ulang.
         let mut out: Vec<PageDoc> = vec![];
         let mut queue: Vec<(String, usize)> = vec![(root_page_id.to_string(), 0)];
         let mut seen: HashMap<String, bool> = HashMap::new();
@@ -1052,7 +1132,17 @@ impl NotionClient for LiveNotionClient {
                 continue;
             }
             seen.insert(id.clone(), true);
-            let doc = self.fetch_page(&id).await?;
+            let is_root = id == root_page_id;
+            let doc = match self.fetch_page(&id).await {
+                Ok(d) => d,
+                // Tautan (@-mention / link_to_page) boleh menunjuk halaman
+                // yang tidak dibagikan ke integrasi (404): lewati halaman
+                // itu, jangan gagalkan seluruh backfill. Root sendiri
+                // tetap gagal keras — bila root tidak terbaca, itu salah
+                // konfigurasi yang harus terlihat.
+                Err(NotionError::NotFound) if !is_root => continue,
+                Err(e) => return Err(e),
+            };
             let children = doc.child_page_ids.clone();
             out.push(doc);
             if depth < MAX_WALK_DEPTH {
@@ -1195,6 +1285,10 @@ impl NotionHandle {
         let mut quarantined = 0usize;
         let mut failures: Vec<Value> = vec![];
         let mut per_source: Vec<Value> = vec![];
+        // Halaman yang sudah diambil lewat pelengkap search (sekali per
+        // run, dibagi semua sumber — search workspace-wide, bukan
+        // per sumber).
+        let mut search_fetched: HashSet<String> = HashSet::new();
 
         for source in sources.iter().filter(|s| s.enabled) {
             let cursor: Option<i64> =
@@ -1213,7 +1307,9 @@ impl NotionHandle {
                 // — bila terinterupsi, lanjut dari cursor, bukan dari nol).
                 match self.client.list_subtree(&source.root_page_id).await {
                     Ok(docs) => {
+                        let mut walk_ids: HashSet<String> = HashSet::new();
                         for mut doc in docs {
+                            walk_ids.insert(doc.page_id.clone());
                             src_checked += 1;
                             fill_parent_path(source, &mut doc);
                             match store_page(&conn, &doc, now) {
@@ -1229,7 +1325,73 @@ impl NotionHandle {
                                 &max_edited.to_string(),
                             );
                         }
-                        set_state(&conn, &format!("backfill:{}", source.id), "1");
+                        // Pelengkap search (perbaikan A1 ronde 2, 2026-11-07):
+                        // walk tidak bisa mencapai baris database (parent
+                        // database_id — mis. R3-01/02/03 di tracker SQL) dan
+                        // halaman di luar tree root (mis. sub-grup Obsidian —
+                        // parent-nya halaman Obsidian, bukan salah satu root).
+                        // search_changed(None) mengembalikan SEMUA halaman yang
+                        // terlihat integrasi (paginasi penuh); yang belum ada
+                        // di walk diambil lewat fetch_page. Halaman personal
+                        // TIDAK ikut: integrasi tidak bisa membacanya (404
+                        // object_not_found — terverifikasi live), jadi search
+                        // tidak mengembalikannya; tidak perlu denylist.
+                        // backfill:1 dicatat hanya bila walk DAN pelengkap
+                        // search berhasil — bila search gagal, run berikutnya
+                        // mengulang backfill (idempotent).
+                        let mut search_ok = true;
+                        match self.client.search_changed(None).await {
+                            Ok(metas) => {
+                                for meta in metas {
+                                    if walk_ids.contains(&meta.page_id)
+                                        || search_fetched.contains(&meta.page_id)
+                                    {
+                                        continue;
+                                    }
+                                    src_checked += 1;
+                                    match self.client.fetch_page(&meta.page_id).await {
+                                        Ok(mut doc) => {
+                                            search_fetched.insert(meta.page_id.clone());
+                                            fill_parent_path(source, &mut doc);
+                                            match store_page(&conn, &doc, now) {
+                                                StoreOutcome::Updated => src_updated += 1,
+                                                StoreOutcome::Unchanged => {}
+                                                StoreOutcome::Quarantined => {
+                                                    src_quarantined += 1;
+                                                }
+                                            }
+                                            max_edited = max_edited.max(doc.notion_last_edited_ms);
+                                            set_state(
+                                                &conn,
+                                                &format!("cursor:{}", source.id),
+                                                &max_edited.to_string(),
+                                            );
+                                        }
+                                        // Halaman hasil search yang ternyata
+                                        // tidak bisa dibaca (hak akses berubah
+                                        // di tengah jalan): lewati.
+                                        Err(NotionError::NotFound) => continue,
+                                        Err(e) => {
+                                            search_ok = false;
+                                            src_failed += 1;
+                                            src_failures.push(json!({
+                                                "page_id": meta.page_id,
+                                                "error": e.safe_msg(),
+                                            }));
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                search_ok = false;
+                                let msg = e.safe_msg();
+                                src_failures.push(json!({"source": source.id, "error": msg}));
+                                set_state(&conn, &format!("last_error:{}", source.id), &msg);
+                            }
+                        }
+                        if search_ok {
+                            set_state(&conn, &format!("backfill:{}", source.id), "1");
+                        }
                     }
                     Err(e) => {
                         let msg = e.safe_msg();
@@ -2532,5 +2694,82 @@ mod tests {
         let recent = client.search_changed(Some(newest - 1)).await.unwrap();
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].last_edited_ms, newest);
+    }
+
+    #[test]
+    fn mention_page_dari_rich_text() {
+        let v = serde_json::json!({
+            "rich_text": [
+                {"type": "text", "plain_text": "Lihat "},
+                {"type": "mention", "mention": {"type": "page", "page": {"id": "11111111-1111-4111-8111-111111111111"}}, "plain_text": "SQL"},
+                {"type": "mention", "mention": {"type": "user", "user": {}}, "plain_text": "@Budi"},
+                {"type": "mention", "mention": {"type": "database", "database": {"id": "44444444-4444-4444-8444-444444444444"}}, "plain_text": "DB"}
+            ]
+        });
+        assert_eq!(
+            mention_page_ids(Some(&v)),
+            vec!["11111111-1111-4111-8111-111111111111".to_string()]
+        );
+        // Array rich_text langsung (sel tabel).
+        let cell = serde_json::json!([
+            {"type": "mention", "mention": {"type": "page", "page": {"id": "55555555-5555-4555-8555-555555555555"}}, "plain_text": "PRD"}
+        ]);
+        assert_eq!(
+            mention_page_ids(Some(&cell)),
+            vec!["55555555-5555-4555-8555-555555555555".to_string()]
+        );
+        assert!(mention_page_ids(None).is_empty());
+    }
+
+    #[test]
+    fn link_to_page_hanya_page_id() {
+        let page = serde_json::json!({
+            "type": "link_to_page",
+            "link_to_page": {"type": "page_id", "page_id": "33333333-3333-4333-8333-333333333333"}
+        });
+        assert_eq!(
+            link_to_page_id(&page).as_deref(),
+            Some("33333333-3333-4333-8333-333333333333")
+        );
+        let db = serde_json::json!({
+            "type": "link_to_page",
+            "link_to_page": {"type": "database_id", "database_id": "44444444-4444-4444-8444-444444444444"}
+        });
+        assert_eq!(link_to_page_id(&db), None);
+    }
+
+    #[tokio::test]
+    async fn flatten_blocks_mengikuti_mention_dan_link() {
+        let client = LiveNotionClient::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:9".to_string(),
+            "2022-06-28".to_string(),
+            "dummy".to_string(),
+            std::sync::Arc::new(HttpStats {
+                hits: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            }),
+        );
+        let blocks = serde_json::json!([
+            {"id": "b1", "type": "paragraph", "paragraph": {"rich_text": [
+                {"type": "text", "plain_text": "Lihat "},
+                {"type": "mention", "mention": {"type": "page", "page": {"id": "11111111-1111-4111-8111-111111111111"}}, "plain_text": "SQL"}
+            ]}},
+            {"id": "22222222-2222-4222-8222-222222222222", "type": "child_page", "child_page": {"title": "Anak"}},
+            {"id": "b3", "type": "link_to_page", "link_to_page": {"type": "page_id", "page_id": "33333333-3333-4333-8333-333333333333"}},
+            {"id": "b4", "type": "paragraph", "paragraph": {"rich_text": [
+                {"type": "mention", "mention": {"type": "user", "user": {}}, "plain_text": "@Budi"}
+            ]}}
+        ]);
+        let arr = blocks.as_array().unwrap().to_vec();
+        let (text, children) = client.flatten_blocks(&arr).await.unwrap();
+        assert!(text.contains("Lihat SQL"), "{text}");
+        assert_eq!(
+            children,
+            vec![
+                "11111111-1111-4111-8111-111111111111".to_string(),
+                "22222222-2222-4222-8222-222222222222".to_string(),
+                "33333333-3333-4333-8333-333333333333".to_string(),
+            ]
+        );
     }
 }
