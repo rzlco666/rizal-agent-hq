@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 /// Durasi (ms) tiap fase `collect_snapshot` — alat ukur B1 (riset performa
 /// 2026-11-07). Nilai 0 = fase itu tidak jalan pada siklus ini (cache masih
-/// segar: tailscale 30 dtk, omp stats 60 dtk, omp usage 5 mnt).
+/// segar: tailscale 60 dtk, omp stats 300 dtk, omp usage 5 mnt).
 #[derive(Default, Clone, Copy, Debug)]
 pub struct CollectTimings {
     pub total_ms: u64,
@@ -234,7 +234,12 @@ pub fn collect_system(prev_cpu: &mut Option<(u64, u64)>) -> SystemInfo {
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(0.0) as u64;
     }
-    if let Some(df) = run_timeout("df", &["-B1", "/"], 4000) {
+    // B6: ukur C: (Windows) dulu — `/mnt/c`; fallback `/` bila tidak ada
+    // (mis. staging di luar WSL). Sebelumnya selalu `/`, jadi `disk.percent`
+    // di health adalah pemakaian root WSL (~13%), bukan C: (~87%).
+    let df_out = run_timeout("df", &["-B1", "/mnt/c"], 4000)
+        .or_else(|| run_timeout("df", &["-B1", "/"], 4000));
+    if let Some(df) = df_out {
         if let Some(last) = df.lines().last() {
             let p: Vec<&str> = last.split_whitespace().collect();
             if p.len() >= 5 {
@@ -320,27 +325,42 @@ pub fn collect_docker() -> (Vec<String>, Vec<String>) {
 }
 
 pub fn collect_git() -> Vec<String> {
-    let mut commits = vec![];
+    // B1-cache: `git log -1` per repo jalan PARALEL (satu thread per repo)
+    // lewat std::thread::scope — sebelumnya sekuensial ~1,6 dtk tiap siklus.
+    // Urutan hasil deterministik (diurutkan nama repo), lalu dipotong 8.
     let dir = format!("{}/projects", home());
+    let mut repos: Vec<(String, std::path::PathBuf)> = vec![];
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for e in rd.flatten() {
             let p = e.path();
             if !p.join(".git").exists() {
                 continue;
             }
-            let name = e.file_name().to_string_lossy().to_string();
-            if let Some(log) = run_timeout(
-                "git",
-                &["-C", &p.to_string_lossy(), "log", "-1", "--format=%h %s"],
-                3000,
-            ) {
-                let log = redact(log.trim());
-                if !log.is_empty() {
-                    commits.push(format!("{name}: {log}"));
-                }
-            }
+            repos.push((e.file_name().to_string_lossy().to_string(), p));
         }
     }
+    repos.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut commits = vec![];
+    std::thread::scope(|s| {
+        let mut handles = vec![];
+        for (name, p) in &repos {
+            handles.push(s.spawn(move || {
+                run_timeout(
+                    "git",
+                    &["-C", &p.to_string_lossy(), "log", "-1", "--format=%h %s"],
+                    3000,
+                )
+                .map(|log| redact(log.trim()))
+                .filter(|log| !log.is_empty())
+                .map(|log| format!("{name}: {log}"))
+            }));
+        }
+        for h in handles {
+            if let Ok(Some(c)) = h.join() {
+                commits.push(c);
+            }
+        }
+    });
     commits.truncate(8);
     commits
 }
@@ -359,10 +379,11 @@ pub struct OmpCache {
 }
 
 pub fn collect_omp(cache: &mut OmpCache, force: bool) {
-    // TTL terpisah demi realtime: stats per model diperbarui tiap 60 detik
-    // (cukup ringan), kuota `omp usage` yang lambat tetap 5 menit.
+    // TTL terpisah: stats per model diperbarui tiap 300 detik (5 menit —
+    // B1-cache: TTL 60 dtk = interval 30 dtk x2, jadi tiap siklus ke-2
+    // membayar ~1-2 dtk untuk stats saja); kuota `omp usage` tetap 5 menit.
     let now = now_ms();
-    let stats_fresh = cache.stats.is_some() && now - cache.at < 60_000;
+    let stats_fresh = cache.stats.is_some() && now - cache.at < 300_000;
     let quotas_fresh = !cache.quotas.is_empty() && now - cache.quotas_at < 5 * 60 * 1000;
     if !force && stats_fresh && quotas_fresh {
         // Cache segar: perintah tidak jalan — nol-kan durasi terakhir supaya
@@ -426,8 +447,9 @@ pub struct CollectState {
     pub omp_cache: OmpCache,
     pub cpu_state: Option<(u64, u64)>,
     pub heartbeat_dir: String,
-    /// Cache probe lambat (status Tailscale + commit git), TTL 30 detik,
-    /// supaya siklus cepat 6 detik tidak memanggil perintah eksternal terus.
+    /// Cache probe lambat (status Tailscale + commit git), TTL 60 detik
+    /// (B1-cache: TTL 30 dtk = interval 30 dtk, jadi cache selalu kedaluwarsa
+    /// dan tiap siklus membayar ~1,6 dtk git + tailscale).
     pub probe_cache: (i64, Option<bool>, Vec<String>),
 }
 
@@ -1172,7 +1194,7 @@ pub fn collect_snapshot(state: &mut CollectState) -> (Snapshot, CollectTimings) 
     let docker_ms = t0.elapsed().as_millis() as u64;
     let mut tailscale_ms = 0u64;
     let mut git_ms = 0u64;
-    let (muse_online, commits) = if now - state.probe_cache.0 < 30_000 && state.probe_cache.0 > 0 {
+    let (muse_online, commits) = if now - state.probe_cache.0 < 60_000 && state.probe_cache.0 > 0 {
         (state.probe_cache.1, state.probe_cache.2.clone())
     } else {
         let t_ts = Instant::now();
