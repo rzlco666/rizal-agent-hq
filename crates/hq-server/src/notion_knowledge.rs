@@ -1614,7 +1614,7 @@ pub fn search_knowledge(
             }
         } else {
             let esc = fts_escape(q);
-            let sql = "SELECT n.page_id, n.title, n.parent_path, n.group_slug, n.content_text, n.notion_url, n.notion_last_edited, n.synced_at, n.sync_status, snippet(notion_docs_fts, 1, '<b>', '</b>', '…', 24) AS snip, bm25(notion_docs_fts) AS rnk FROM notion_docs_fts JOIN notion_docs n ON n.rowid = notion_docs_fts.rowid WHERE notion_docs_fts MATCH ?1 AND n.sync_status = COALESCE(?2, 'synced') AND (?3 IS NULL OR n.group_slug = ?3) ORDER BY rnk LIMIT ?4";
+            let sql = "SELECT n.page_id, n.title, n.parent_path, n.group_slug, n.content_text, n.notion_url, n.notion_last_edited, n.synced_at, n.sync_status, snippet(notion_docs_fts, 1, '<b>', '</b>', '…', 24) AS snip, bm25(notion_docs_fts, 5.0, 1.0) AS rnk FROM notion_docs_fts JOIN notion_docs n ON n.rowid = notion_docs_fts.rowid WHERE notion_docs_fts MATCH ?1 AND n.sync_status = COALESCE(?2, 'synced') AND (?3 IS NULL OR n.group_slug = ?3) ORDER BY rnk LIMIT ?4";
             if let Ok(mut stmt) = conn.prepare(sql) {
                 let rows =
                     stmt.query_map(rusqlite::params![esc, status, scope, limit as i64], |r| {

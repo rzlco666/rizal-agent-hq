@@ -310,6 +310,16 @@ fn db_init(path: &str) -> rusqlite::Connection {
     conn
 }
 
+/// F1: state kolektor yang dipulihkan sesudah blocking task panik.
+/// `heartbeat_dir` WAJIB ikut — tanpa itu sumber heartbeat Muse mati
+/// sampai restart (bug yang ditemukan QA Bam).
+fn collect_state_after_panic(heartbeat_dir: String) -> hq_collect::CollectState {
+    hq_collect::CollectState {
+        heartbeat_dir,
+        ..Default::default()
+    }
+}
+
 async fn refresh(st: &AppState) {
     let t_total = std::time::Instant::now();
     let prev_agents = st.snap.read().await.agents.clone();
@@ -323,6 +333,11 @@ async fn refresh(st: &AppState) {
         let mut collect = st.collect.write().await;
         std::mem::take(&mut *collect)
     };
+    // F1: `heartbeat_dir` WAJIB dikloning SEBELUM `state` di-move ke
+    // closure — bila blocking task panik, `state` tidak bisa dibaca lagi
+    // dan state default tanpa heartbeat_dir mematikan sumber heartbeat
+    // Muse sampai restart.
+    let heartbeat_dir = state.heartbeat_dir.clone();
     let (mut snap, timings) = match tokio::task::spawn_blocking(move || {
         let mut s = state;
         let (snap, timings) = hq_collect::collect_snapshot(&mut s);
@@ -335,7 +350,7 @@ async fn refresh(st: &AppState) {
             (snap, timings)
         }
         Err(e) => {
-            *st.collect.write().await = hq_collect::CollectState::default();
+            *st.collect.write().await = collect_state_after_panic(heartbeat_dir);
             println!("[perf] refresh collect GAGAL (blocking task panik): {e}");
             return;
         }
@@ -1508,5 +1523,35 @@ mod tests {
         assert_eq!(ats, vec![4000, 5000]);
         drop(db);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f1_cabang_panik_mempertahankan_heartbeat_dir() {
+        // Regresi F1: mensimulasikan bentuk cabang Err refresh() — state
+        // di-take, blocking task panik, lalu state dipulihkan. Tanpa
+        // perbaikan, CollectState::default() menghapus heartbeat_dir dan
+        // sumber heartbeat Muse mati sampai restart.
+        let dir = "/tmp/hq-f1-heartbeat".to_string();
+        let st: RwLock<hq_collect::CollectState> = RwLock::new(hq_collect::CollectState {
+            heartbeat_dir: dir.clone(),
+            cpu_state: Some((1, 2)),
+            ..Default::default()
+        });
+        let state = {
+            let mut c = st.write().await;
+            std::mem::take(&mut *c)
+        };
+        let heartbeat_dir = state.heartbeat_dir.clone();
+        let joined = tokio::task::spawn_blocking(move || {
+            let _state = state;
+            panic!("simulasi blocking task panik");
+        })
+        .await;
+        assert!(joined.is_err());
+        *st.write().await = collect_state_after_panic(heartbeat_dir);
+        let recovered = st.read().await;
+        assert_eq!(recovered.heartbeat_dir, dir, "heartbeat_dir hilang");
+        // Field non-persisten lain memang direset ke default.
+        assert_eq!(recovered.cpu_state, None);
     }
 }
