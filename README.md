@@ -11,11 +11,12 @@
 </p>
 
 <p align="center">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.99-dea584?logo=rust&logoColor=white">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-dea584?logo=rust&logoColor=white">
   <img alt="Axum" src="https://img.shields.io/badge/Axum-0.8-2f3b52">
   <img alt="Three.js" src="https://img.shields.io/badge/Three.js-3D-049ef4?logo=threedotjs&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-3ddc97">
-  <img alt="Single binary" src="https://img.shields.io/badge/Deploy-1%20binary%20~5MB-ffb454">
+  <img alt="Single binary" src="https://img.shields.io/badge/Deploy-1%20binary%20~9MB-ffb454">
 </p>
 
 <p align="center">
@@ -31,6 +32,8 @@
   <img src="docs/screenshot.png" width="880" alt="Rizal Agent HQ v2.5 running on real data: minimalist header, isometric 3D office with live agent chips, task & log dock below, and quota panels on the right">
 </p>
 <p align="center"><i>The 3D office running on real data — OMP, Cursor, and Muse in the front row; robot workers &amp; MCP behind them; Critical alerts and provider quotas in the right-hand panel.</i></p>
+
+> **Latest release: v2.5.0** — [release notes](https://github.com/rzlco666/rizal-agent-hq/releases/tag/v2.5.0) (2026-11-02). Since then on `main`: live stock prices, Notion knowledge search, and the B1–B5 performance work — see [What's new](#-whats-new).
 
 ## ✨ Why does this project exist?
 
@@ -48,9 +51,26 @@ when an agent has been silently waiting for your decision for two hours.
 | 🧑‍🤝‍🧑 **Mixed characters** | Main agents = low-poly humans; workers & MCP = small robots in their parent's colors. One glance tells you who's a permanent employee and who's an on-call contractor. |
 | 🗣️ **Human-friendly logs & tasks** | Not `bash -c CARGO_BUILD_JOBS=2 cargo test …`, but *"OMP is running the strut-stack-sql test suite — 188 tests green."* The raw log is still there, behind a toggle. |
 | 👆 **A real detail view** | Click a character → a 5-tab detail view: Summary, Tasks, Log, Usage, Sessions & Files. |
-| 🚨 **"Needs You" alerts** | A full quota, a dwindling balance, an agent dying unexpectedly, a session waiting for input — all surface as tiered alerts, and **Critical** ones are forwarded to WhatsApp. |
+| 🚨 **"Needs You" alerts** | A full quota, a dwindling balance, an agent dying unexpectedly, a session waiting for input — all surface as tiered alerts in the Alert Center. |
 | 💸 **Honest per-agent costs** | Tokens & costs are attributed per agent/session, always split into **CASH vs shadow** (subscription). No more unexplained "total $16" that belongs to no one. |
 | 🔌 **Dynamic & plug-and-play** | Data sources live in a registry: adding a new connector takes one function + one line. External agents can join the office with a simple heartbeat POST. |
+
+## 🆕 What's new
+
+- **Live stocks (Nov 2026, PR #6–#8)** — `GET /api/stocks` serves live prices from EODHD (primary) with FMP as the backup for non-`.JK` symbols; the Stocks panel shows your watchlist from `stocks.json` plus a portfolio table with explicit cost basis. Watch-only: HQ never buys, sells, or advises.
+- **Notion knowledge (Nov 2026, PR #10–#11)** — selected Notion pages sync into a local mirror (`notion_docs`, separate from trusted memory) with FTS5 BM25 search at `GET /api/knowledge/search`. Sync acceptance, measured live: **219/219 pages found (A1)** and **precision@5 0.90 (A5)**. Pages that trip the secret gate are quarantined, never stored redacted.
+- **Performance B1–B5 (Nov 2026, PR #12)** — snapshot collection moved off the async runtime, LLM calls capped, SQLite on WAL, history paginated, gzip on. Typical refresh cycle **264–461 ms** (was 7,214–8,278 ms); gzip cuts a 35,487 B snapshot to 8,569 B (−76%). See [Performance](#-performance-measured).
+- **In review: PR #13** — knowledge ranking fixes (R3+N2) plus the heartbeat-dir fix (F1). Not merged yet.
+
+## ✨ Features
+
+- **3D office** — isometric virtual office (Three.js): agent figures per session, zone chips with live counts, meeting room, task-board kanban, facilities panels, Sims-style controls (pause, speed, day/night, follow-cam), trilingual UI (EN/ID/中文).
+- **Knowledge** — Notion sync (30-minute incremental + checkpointed backfill), FTS5 BM25 search, per-source status, quarantine for secret-like content, promote-to-memory flow (human-approved only — sync never writes trusted memory).
+- **Stocks & portfolio** — live prices (EODHD primary, FMP backup), portfolio from `stocks.json` (positions + explicit `avg_buy_price`; P&L is "not available" until you fill positions — HQ never invents them, never advises).
+- **Performance workspace** — per-agent progress donut, task counts, searchable task table, agent summary across all agents.
+- **Alert Center** — tiered alerts with SQLite-backed acknowledge/snooze applied instantly over WebSocket.
+- **Models & Providers** — per-model requests/tokens/cost, CASH vs SHADOW classes, LLM session-summary polisher ($0 models first, template fallback, SQLite cache).
+- **Dynamic sources** — `omp`, `cursor`, `Muse`, `coding-agents`, `mcp`; any external agent joins via `POST /api/heartbeat`.
 
 ## 🚀 Install (plug & play)
 
@@ -71,73 +91,38 @@ Run it manually, without systemd:
 
 ```bash
 cargo run --release -p hq-server      # http://127.0.0.1:8900/
-cargo test --workspace                # 13+ tests
+cargo test --workspace                # full suite (unit + integration)
 ```
 
-## ✨ Baru di cabang ini: Performance Workspace, zona dinamis, dan nav lengkap
+Or foreground, no install at all:
 
-- **Performance Workspace** (tombol `Performance` di nav atas): pilih satu agent, lihat donut progres
-  selesai/total, hitungan Dikerjakan / Menunggu review / Selesai / Perlu diperiksa, dan tabel tugas
-  dengan kolom Tugas / Status / Diperbarui / Aksi. Tombol `Buka tugas` membuka drawer detail agent
-  itu. Semua angka berasal dari tugas HQ yang sebenarnya; agent tanpa tugas menampilkan pesan
-  kosong yang jujur, bukan angka contoh. Cari tugas lewat kolom pencarian di dalam workspace.
-- **Zona dinamis di bawah panggung**: setiap chip zona (Seluruh kantor, Studio Muse, Ruang OMP,
-  Workers, Cursor, Meeting, Server MCP) sekarang menampilkan jumlah agent yang benar-benar ada
-  di zona itu, diperbarui dari snapshot live. Zona kosong ditampilkan redup dengan keterangan
-  "Belum ada agent di zona ini" — tidak lagi seolah-olah ada isinya.
-- **Label agent**: label melayang di atas figur sekarang menampilkan nama + peran (role) + status,
-  sesuai data agent, bukan hanya nama dan status.
-- **Nav lengkap**: `Studio` (kamera ke Studio Muse), `Saham`, dan `Pengetahuan` ditambahkan di
-  samping `Ruang kendali`, `Panggil meeting`, `Performance`, `Papan tugas`, `Fasilitas`, dan
-  `Model & Provider`. `Saham` dan `Pengetahuan` sengaja masih berupa panel kosong yang jujur:
-  HQ belum dihubungkan ke sumber portofolio atau dokumen apa pun, jadi tidak ada harga, angka,
-  atau dokumen contoh yang ditampilkan. Beri tahu sumbernya (file portofolio / API broker /
-  Google Sheet untuk Saham; folder dokumen / Notion / Google Drive untuk Pengetahuan) untuk
-  mengaktifkan modul tersebut di iterasi berikutnya.
-- **Jalan cepat tanpa install**: `./scripts/quickstart.sh` menjalankan HQ di foreground
-  (default http://localhost:8900/, Ctrl+C untuk berhenti); `./scripts/install.sh` tetap untuk
-  service permanen. Variabel env yang tersedia didokumentasikan di `.env.example`.
-
-## ✨ Lanjutan: Studio terisi, Saham dari file, Performance lengkap, mobile, alert Muse
-
-- **Studio terisi**: tombol `Studio` sekarang membuka panel Studio berisi kartu agent utama
-  (OMP, Cursor, Muse) dari data live — peran, status, aktivitas, jumlah tugas selesai/total,
-  request, token, dan biaya — dengan tombol `Buka detail` ke drawer. Sebelumnya Studio hanya
-  menggeser kamera ke ruangan Muse tanpa konten apa pun.
-- **Saham terisi — dari file kamu, bukan contoh**: endpoint baru `GET /api/stocks` membaca
-  `stocks.json` di folder data HQ. Bila file ada, panel Saham menampilkan tabel posisi dan
-  total portofolio (lembar × harga file). Bila file tidak ada, panel tetap kosong yang jujur
-  dengan format file dan dokumentasi di `docs/SAHAM.md`. Tidak ada harga live dan tidak ada
-  angka contoh. Pendapat Melo: ini cara terbaik sekarang, karena harga saham adalah data
-  uang — harga live baru layak ditambahkan setelah kamu memilih sumber kuotasinya.
-- **Performance lengkap**: workspace kini diawali ringkasan semua agent (total dan selesai,
-  plus tabel mini per agent yang bisa diklik untuk membuka workspace agent itu), dan baris
-  agent menampilkan request, token, dan biaya TUNAI/bayangan. Jadi workspace tidak lagi
-  terlihat kosong hanya karena agent yang terpilih saat itu kebetulan 0 tugas. Default
-  agent juga sudah diperbaiki: agent dengan tugas terbanyak dulu.
-- **Mobile / iPhone**: header kini melipat di layar sempit — nav menjadi satu baris penuh
-  yang bisa di-scroll horizontal, bukan terpotong seperti di screenshot sebelumnya; hint
-  yang terpotong disembunyikan di layar kecil; overlay dan tabel diberi scroll horizontal
-  dan padding yang lebih kecil.
-- **Alert "Muse butuh kamu" diperbaiki**: sebelumnya status heartbeat Muse diabaikan,
-  sehingga Muse tidak pernah bisa berstatus Menunggu Rizal dan alert-nya tidak pernah
-  hidup. Sekarang heartbeat dengan status `menunggu-rizal` (dan variannya) yang masih
-  segar (< 2 jam) benar-benar membuat Muse berstatus Menunggu Rizal dan memicu alert
-  Perlu Action di panel "Butuh Rizal" + badge. Skrip `scripts/post-muse-waiting.sh`
-  mengirim heartbeat itu; detail lengkap dan keputusan yang masih dibutuhkan ada di
-  `docs/MUSE-URGENT.md`.
+```bash
+./scripts/quickstart.sh               # default http://localhost:8900/, Ctrl+C to stop
+```
 
 ## ⚙️ Configuration (all via env, no mandatory files)
+
+Secrets live in the environment (or a systemd drop-in) — never in the repo.
 
 | Env | Default | Meaning |
 |---|---|---|
 | `HQ_PORT` | `8900` | Server port |
-| `HQ_BIND` | `127.0.0.1` | Listen address |
-| `HQ_INTERVAL` | `30` | Data collection interval (seconds) |
-| `HQ_DATA` | `data/` | Folder for SQLite + heartbeats |
-| `HQ_WEB` | `web/` | Static UI folder |
+| `HQ_BIND` | `127.0.0.1` | Listen address (local-first; bind `0.0.0.0` only behind a reverse proxy you trust) |
+| `HQ_INTERVAL` | `6` | Snapshot collection interval (seconds) |
+| `HQ_DATA` | `data` | Folder for SQLite + heartbeats |
+| `HQ_WEB` | `web` | Static UI folder |
 | `HQ_SOURCES` | *(all)* | Source allowlist, e.g. `omp,cursor,Muse` |
 | `HQ_DISABLE_SOURCES` | — | Disable specific sources, e.g. `mcp` |
+| `HQ_LLM` | `on` | LLM session-summary polisher on/off |
+| `HQ_LLM_MODELS` | — | Model chain override ($0 models first by default) |
+| `HQ_LLM_MAX_PENDING` | `8` | Max queued LLM summary tasks (B2 cap) |
+| `HQ_LLM_MAX_PER_HOUR` | `20` | Max LLM summary calls per hour (B2 cap) |
+| `HQ_DEST` | `$HOME/rizal-agent-hq` | Install target (only used by `scripts/install.sh`) |
+| `NOTION_API_KEY` | — | Notion integration token (knowledge sync; without it the module runs degraded) |
+| `EODHD_API_KEY` | — | EODHD token (live stock prices, primary) |
+| `FMP_API_KEY` | — | FMP token (backup prices, non-`.JK` only) |
+
+Full list with comments: [`.env.example`](.env.example).
 
 ## 🧩 Dynamic: adding new agents & connectors
 
@@ -167,8 +152,12 @@ Devin when running), `mcp`.
             └────────┼───────────────────────────────────┬───────────────────┘
                      ▼                                   ▼
               Alert Center                       web/ — 3D office (Three.js)
-              + WhatsApp (Critical)              humans & robots, live via WS
+              + ack/snooze (SQLite)              humans & robots, live via WS
 ```
+
+Four crates (`hq-core`, `hq-collect`, `hq-alert`, `hq-server`), one static
+binary (~9 MB release build, LTO + stripped). Knowledge (`notion_knowledge`)
+and stocks live in `hq-server` as modules, behind the same snapshot model.
 
 Non-negotiable principles:
 
@@ -176,8 +165,54 @@ Non-negotiable principles:
 - **Human-friendly first** — one fixed sentence pattern: `[Agent] [human verb] [object] — [detail]`.
 - **Read-only & safe** — collectors never change anything on the machine; all free text is scrubbed of secrets (API keys/tokens are never displayed or stored).
 - **One source of truth** — every panel reads the same `Snapshot` from `hq-core`.
+- **Trusted memory is human-written only** — the Notion sync mirrors into `notion_docs` and never writes trusted memory; promotion is a human-approved action.
 
 The full product specification: **[PRD.md](PRD.md)**.
+
+## 🔌 API
+
+Base: `http://127.0.0.1:8900`. JSON everywhere; live data only, no sample rows.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/health` | Liveness + deep status: uptime, DB, stocks freshness, memory, disk, LLM caps, last refresh |
+| `GET /api/state` | Full snapshot (agents, tasks, alerts, quotas) |
+| `GET /api/agents` | Agent list |
+| `GET /api/alerts` | Alert list; `POST /api/alerts/:id/ack` and `/snooze` persist the action |
+| `GET /api/history?limit=&offset=` | History rows, paginated (default limit 2000, max 10000) + `total` |
+| `GET /api/stocks` | Watchlist + portfolio (live prices); `POST /api/stocks/refresh` fetches now, respecting the daily gate |
+| `GET /api/portfolio` | Portfolio positions + cost basis |
+| `GET /api/knowledge/search?q=` | FTS5 BM25 search over synced Notion pages |
+| `GET /api/knowledge/pages` · `GET /api/knowledge/page/{id}` | Synced page list + one page |
+| `GET /api/knowledge/sync/status` | Sync status per source (counts, last error, quarantine) |
+| `POST /api/knowledge/sync` | Trigger an incremental sync now |
+| `POST /api/knowledge/promote` | Promote a synced page toward trusted memory (human-approved) |
+| `POST /api/heartbeat` | External agent heartbeat — joins the office |
+| `GET /ws` | WebSocket: live snapshot + alert broadcasts |
+
+## 📈 Performance (measured)
+
+Measured live on the PR #12 head (Nov 2026), not estimated. Method and logs:
+[docs/PERF.md](docs/PERF.md).
+
+| Metric | Before | After |
+|---|---|---|
+| Refresh cycle (typical) | 7,214–8,278 ms | **264–461 ms** |
+| Snapshot payload (gzip) | 35,487 B | **8,569 B (−76%)** |
+| History endpoint | full table, unbounded | paginated (`?limit`, default 2000, max 10000) |
+| SQLite | default journal | **WAL** + `busy_timeout=5000` + `synchronous=NORMAL` |
+| LLM summaries | unbounded | capped: max **8** pending, **20**/hour |
+| Service memory cap | none | **MemoryMax=1G** (systemd) |
+| Server RSS (live) | — | ~29 MB |
+
+## ⚠️ Honest limitations
+
+- **Local-first.** HQ binds `127.0.0.1` by default and is meant to run on your own machine. Remote access needs a reverse proxy / tunnel you operate yourself.
+- **Stocks are watch-only.** Prices come from EODHD (primary) and FMP (backup, non-`.JK` only); quotes are empty on weekends until the next fetch, and HQ never buys, sells, or gives investment advice. P&L stays "not available" until you fill positions yourself.
+- **Knowledge search is good, not perfect.** Sync acceptance is A1 219/219 pages found and A5 precision@5 0.90 (one probe ranked #8, outside the top 5). Quarantined pages stay quarantined until a human reviews them.
+- **LLM summaries are capped and cached.** At most 8 pending tasks and 20 calls/hour; when the budget is spent, summaries fall back to templates.
+- **Alerts surface in HQ.** The Alert Center is live; forwarding to an external channel (Telegram/WhatsApp) is not wired up in this release.
+- **One machine, one SQLite file.** No multi-user auth beyond the local bind; backups must include the `-wal`/`-shm` files (or checkpoint first).
 
 ## 🗺️ Status
 
@@ -186,14 +221,16 @@ The full product specification: **[PRD.md](PRD.md)**.
 | M1 | Rust skeleton + collectors + SQLite + API | ✅ done, verified against real data |
 | M2 | Session humanization + per-session workers + WebSocket | ✅ done, verified against real data |
 | M3 | 3D office + 5-tab detail view | ✅ done, verified with screenshots of real data |
-| M4 | Alert Center + WhatsApp bridge | ✅ Alert Center live; Critical bridge runs every ±15 min (the WhatsApp channel activates once the account is linked) |
-| M5 | GitHub release + systemd install + daily report | ✅ live on WSL (port 8900) + public repo; the quota panel shows the OpenCode Go → DeepSeek fallback chain |
-| M6 | Bright isometric virtual office redesign | ✅ isometric orthographic camera, furnished glass rooms per team, a living environment (roads, zebra crossing, moving cars, trees), floating name chips, bright pill UI + agent search |
-| M7 | Complete virtual office features | ✅ **Call Meeting** (main agents walk to the meeting room for ±30 s), **Task Board** 4-phase kanban, **Facilities** (host/Docker/Tailscale/blown quotas/fallback), clickable interior (sofa, ping-pong table, server racks, meeting screen, entrance sign), version label v2.1 |
-| M8 | Intelligence & control release | ✅ **LLM session-summary polisher** ($0 models via OMP with template fallback, SQLite cache), **Models & Providers dashboard** (per-model requests/tokens/cost, CASH vs SHADOW classes), **alert actions that persist** (SQLite-backed ack/snooze applied instantly over WebSocket), new minimalist logo, version v2.2 |
-| M9 | Realtime Sims-style office | ✅ 6-second refresh (split TTL caches), **every parallel OMP main session gets its own figure**, realtime process line above agents' heads, **The Sims controls** (pause, 1×/2×/4× speed, day/sunset/night ambience, auto-orbit, follow-cam, plumbob over the selected agent), **trilingual UI (EN/ID/中文)**, slimmer scrollbars & smoother overlays, Muse presence tiers from heartbeats, version v2.3 |
-| M10 | Award-grade layout redesign | ✅ **Docked app-shell grid** — single-row header, stage card, right-rail cards, and a bottom dock replace every floating panel that used to overlap the office; **agent name chips resolve collisions automatically** (stack neatly instead of piling up), tasks dock shows LLM summaries clamped to two lines, quota rows aligned with tabular numbers, refined spacing/typography system, version v2.4 |
-| M11 | Minimalist polish, honest camera, performance | ✅ **Flat minimalist header** and a consistent **stroke SVG icon system** (no emoji in the UI chrome; agent chips are dot + name, drawer/2D use color monograms); **one functional stage control bar** (pause, camera reset, zones) replacing the overlapping decorative Sims controls; **camera respects the user** — drag pans, scroll zooms, position persists (localStorage) and never snaps back; **render-on-change panels** (signature cache), capped dock lists, chip DOM written only when content changes, DPR/shadow tuned, rendering pauses in hidden tabs, version v2.5 |
+| M4 | Alert Center + ack/snooze | ✅ Alert Center live; actions persist in SQLite and apply instantly over WebSocket |
+| M5 | GitHub release + systemd install + daily report | ✅ live on WSL (port 8900) + public repo; release v2.5.0 |
+| M6 | Bright isometric virtual office redesign | ✅ isometric orthographic camera, furnished glass rooms per team, living environment, floating name chips, bright pill UI + agent search |
+| M7 | Complete virtual office features | ✅ **Call Meeting**, **Task Board** 4-phase kanban, **Facilities**, clickable interior, version label v2.1 |
+| M8 | Intelligence & control release | ✅ **LLM session-summary polisher**, **Models & Providers dashboard**, **alert actions that persist**, version v2.2 |
+| M9 | Realtime Sims-style office | ✅ 6-second refresh, **every parallel OMP main session gets its own figure**, **The Sims controls**, **trilingual UI (EN/ID/中文)**, version v2.3 |
+| M10 | Award-grade layout redesign | ✅ **Docked app-shell grid**, **agent name chips resolve collisions**, version v2.4 |
+| M11 | Minimalist polish, honest camera, performance | ✅ **Flat minimalist header**, **stroke SVG icon system**, **one functional stage control bar**, **camera respects the user**, **render-on-change panels**, version v2.5 |
+
+**Next:** PR #13 — knowledge ranking fixes (R3+N2) + heartbeat-dir fix (F1), in review.
 
 ## 🤝 Contributing
 
