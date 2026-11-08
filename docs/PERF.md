@@ -2,6 +2,20 @@
 
 Fase UKUR (bukan perbaikan) + fase PERBAIKI B1–B5 (di bawah). Lihat riset: `~/workspace/work/hq-performance-research-2026-11-07.md`.
 
+## Hasil ukur (PR #12, Nov 2026)
+
+Diukur live pada head PR #12 (bukan estimasi). Angka yang sama tercantum di README § Performance (measured).
+
+| Metric | Before | After |
+|---|---|---|
+| Refresh cycle (typical) | 7,214–8,278 ms | **264–461 ms** |
+| Snapshot payload (gzip) | 35,487 B | **8,569 B (−76%)** |
+| History endpoint | full table, unbounded | paginated (`?limit`, default 2000, max 10000) |
+| SQLite | default journal | **WAL** + `busy_timeout=5000` + `synchronous=NORMAL` |
+| LLM summaries | unbounded | capped: max **8** pending, **20**/hour |
+| Service memory cap | none | **MemoryMax=1G** (systemd) |
+| Server RSS (live) | — | ~29 MB at PR #12 deploy (~40 MB later as snapshots grow) |
+
 ## Log `[perf]`
 
 Satu baris per siklus refresh (30 dtk) di stdout service:
