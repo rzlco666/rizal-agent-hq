@@ -57,8 +57,8 @@ when an agent has been silently waiting for your decision for two hours.
 
 ## 🆕 What's new
 
-- **Live stocks (Nov 2026, PR #6–#8)** — `GET /api/stocks` serves live prices from EODHD (primary) with FMP as the backup for non-`.JK` symbols; the Stocks panel shows your watchlist from `stocks.json` plus a portfolio table with explicit cost basis. Watch-only: HQ never buys, sells, or advises.
-- **Notion knowledge (Nov 2026, PR #10–#11)** — selected Notion pages sync into a local mirror (`notion_docs`, separate from trusted memory) with FTS5 BM25 search at `GET /api/knowledge/search`. Sync acceptance, measured live: **219/219 pages found (A1)** and **precision@5 0.90 (A5)**. Pages that trip the secret gate are quarantined, never stored redacted.
+- **Live stocks (Nov 2026, PR #6–#8)** — `GET /api/stocks` serves live prices from EODHD (primary) with FMP as the backup for other suffixes (e.g. `.DE`); the Stocks panel shows your watchlist from `stocks.json` plus a portfolio table with explicit cost basis. Watch-only: HQ never buys, sells, or advises.
+- **Notion knowledge (Nov 2026, PR #10–#11)** — selected Notion pages sync into a local mirror (`notion_docs`, separate from trusted memory) with FTS5 BM25 search at `GET /api/knowledge/search`. Sync acceptance, measured live: **219/219 pages found (A1)** and **precision@5 0.50 (A5)**. PR #13 (in review) measures precision@5 0.90 on its head. Pages that trip the secret gate are quarantined, never stored redacted.
 - **Performance B1–B5 (Nov 2026, PR #12)** — snapshot collection moved off the async runtime, LLM calls capped, SQLite on WAL, history paginated, gzip on. Typical refresh cycle **264–461 ms** (was 7,214–8,278 ms); gzip cuts a 35,487 B snapshot to 8,569 B (−76%). See [Performance](#-performance-measured).
 - **In review: PR #13** — knowledge ranking fixes (R3+N2) plus the heartbeat-dir fix (F1). Not merged yet.
 
@@ -66,7 +66,7 @@ when an agent has been silently waiting for your decision for two hours.
 
 - **3D office** — isometric virtual office (Three.js): agent figures per session, zone chips with live counts, meeting room, task-board kanban, facilities panels, Sims-style controls (pause, speed, day/night, follow-cam), trilingual UI (EN/ID/中文).
 - **Knowledge** — Notion sync (30-minute incremental + checkpointed backfill), FTS5 BM25 search, per-source status, quarantine for secret-like content, promote-to-memory flow (human-approved only — sync never writes trusted memory).
-- **Stocks & portfolio** — live prices (EODHD primary, FMP backup), portfolio from `stocks.json` (positions + explicit `avg_buy_price`; P&L is "not available" until you fill positions — HQ never invents them, never advises).
+- **Stocks & portfolio** — live prices (EODHD primary, FMP backup), portfolio from `data/portfolio.json` (positions + explicit `avg_buy_price`; P&L is "not available" until you fill positions — HQ never invents them, never advises).
 - **Performance workspace** — per-agent progress donut, task counts, searchable task table, agent summary across all agents.
 - **Alert Center** — tiered alerts with SQLite-backed acknowledge/snooze applied instantly over WebSocket.
 - **Models & Providers** — per-model requests/tokens/cost, CASH vs SHADOW classes, LLM session-summary polisher ($0 models first, template fallback, SQLite cache).
@@ -120,7 +120,7 @@ Secrets live in the environment (or a systemd drop-in) — never in the repo.
 | `HQ_DEST` | `$HOME/rizal-agent-hq` | Install target (only used by `scripts/install.sh`) |
 | `NOTION_API_KEY` | — | Notion integration token (knowledge sync; without it the module runs degraded) |
 | `EODHD_API_KEY` | — | EODHD token (live stock prices, primary) |
-| `FMP_API_KEY` | — | FMP token (backup prices, non-`.JK` only) |
+| `FMP_API_KEY` | — | FMP token (backup prices, other suffixes only) |
 
 Full list with comments: [`.env.example`](.env.example).
 
@@ -203,13 +203,13 @@ Measured live on the PR #12 head (Nov 2026), not estimated. Method and logs:
 | SQLite | default journal | **WAL** + `busy_timeout=5000` + `synchronous=NORMAL` |
 | LLM summaries | unbounded | capped: max **8** pending, **20**/hour |
 | Service memory cap | none | **MemoryMax=1G** (systemd) |
-| Server RSS (live) | — | ~29 MB |
+| Server RSS (live) | — | ~30–40 MB (grows with snapshots) |
 
 ## ⚠️ Honest limitations
 
 - **Local-first.** HQ binds `127.0.0.1` by default and is meant to run on your own machine. Remote access needs a reverse proxy / tunnel you operate yourself.
-- **Stocks are watch-only.** Prices come from EODHD (primary) and FMP (backup, non-`.JK` only); quotes are empty on weekends until the next fetch, and HQ never buys, sells, or gives investment advice. P&L stays "not available" until you fill positions yourself.
-- **Knowledge search is good, not perfect.** Sync acceptance is A1 219/219 pages found and A5 precision@5 0.90 (one probe ranked #8, outside the top 5). Quarantined pages stay quarantined until a human reviews them.
+- **Stocks are watch-only.** Prices come from EODHD (primary) and FMP (backup for other suffixes, e.g. `.DE`); quotes are empty on weekends until the next fetch, and HQ never buys, sells, or gives investment advice. P&L stays "not available" until you fill positions yourself.
+- **Knowledge search is good, not perfect.** Sync acceptance is A1 219/219 pages found and A5 precision@5 0.50 live; 0.90 was measured on the PR #13 head (in review), with one probe ranked #8, outside the top 5. Quarantined pages stay quarantined until a human reviews them.
 - **LLM summaries are capped and cached.** At most 8 pending tasks and 20 calls/hour; when the budget is spent, summaries fall back to templates.
 - **Alerts surface in HQ.** The Alert Center is live; forwarding to an external channel (Telegram/WhatsApp) is not wired up in this release.
 - **One machine, one SQLite file.** No multi-user auth beyond the local bind; backups must include the `-wal`/`-shm` files (or checkpoint first).
