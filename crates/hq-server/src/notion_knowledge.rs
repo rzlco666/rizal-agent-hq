@@ -483,11 +483,16 @@ enum StoreOutcome {
 }
 
 /// Simpan satu dokumen hasil sync (satu transaksi per halaman).
-/// Gerbang karantina dinilai pada teks ASLI: bila mengandung pola rahasia,
-/// isi TIDAK disimpan (bahkan tidak tersensor) — B.5 §7.1. Teks yang lolos
-/// tetap melewati `redact()` sebagai pass kedua sebelum disimpan.
+/// Gerbang karantina dinilai pada teks ASLI — isi DAN judul: bila mengandung
+/// pola rahasia, isi TIDAK disimpan (bahkan tidak tersensor) — B.5 §7.1.
+/// Judul berahasia ikut dikosongkan; judul bersih tetap disimpan agar halaman
+/// karantina bisa diidentifikasi. Teks yang lolos tetap melewati `redact()`
+/// sebagai pass kedua sebelum disimpan.
 fn store_page(conn: &Connection, doc: &PageDoc, now: i64) -> StoreOutcome {
-    if contains_secret(&doc.content_text) {
+    // N1: gerbang rahasia juga memeriksa JUDUL halaman (seperti
+    // create_memory yang memeriksa title + body) — sebelumnya hanya isi.
+    let title_has_secret = contains_secret(&doc.title);
+    if contains_secret(&doc.content_text) || title_has_secret {
         let _ = conn.execute(
             "INSERT INTO notion_docs(page_id, title, parent_path, group_slug, content_text, content_hash, word_count, notion_url, notion_last_edited, synced_at, sync_status, quarantine_note)
              VALUES(?1,?2,?3,?4,'','',0,?5,?6,?7,'quarantined','mengandung pola rahasia')
@@ -497,7 +502,9 @@ fn store_page(conn: &Connection, doc: &PageDoc, now: i64) -> StoreOutcome {
                  sync_status='quarantined', quarantine_note='mengandung pola rahasia'",
             rusqlite::params![
                 doc.page_id,
-                doc.title,
+                // Judul bersih tetap disimpan; judul berahasia dikosongkan
+                // supaya rahasia tidak bocor lewat kolom title.
+                if title_has_secret { "" } else { doc.title.as_str() },
                 doc.parent_path,
                 doc.group_slug,
                 doc.notion_url,
@@ -638,7 +645,11 @@ impl NotionClient for MockNotionClient {
         let mut out: Vec<PageMeta> = self
             .pages
             .iter()
-            .filter(|p| since_ms.is_none_or(|s| p.notion_last_edited_ms > s))
+            // N2: cutoff INKLUSIF (>=) — halaman dengan edited == cursor ikut
+            // dikembalikan dan dicek ulang (dedup lewat hash di store_page),
+            // supaya tidak ada baris yang terlewat saat beberapa halaman
+            // berbagi timestamp yang sama (last_edited_time Notion bergranularitas detik).
+            .filter(|p| since_ms.is_none_or(|s| p.notion_last_edited_ms >= s))
             .map(|p| PageMeta {
                 page_id: p.page_id.clone(),
                 title: p.title.clone(),
@@ -1017,7 +1028,11 @@ impl NotionClient for LiveNotionClient {
         // CATATAN (deviasi SA §3.1, dicatat di laporan): API search Notion
         // TIDAK mendukung filter `last_edited_time > cursor` di sisi server.
         // Yang dipakai: sort last_edited_time menurun + cutoff client-side —
-        // berhenti saat halaman sudah lebih tua dari cursor.
+        // berhenti saat halaman sudah lebih tua dari cursor. N2: cutoff
+        // INKLUSIF — halaman dengan edited == cursor ikut dikembalikan dan
+        // dicek ulang (dedup lewat hash di store_page), supaya tidak ada
+        // baris yang terlewat saat beberapa halaman berbagi timestamp yang
+        // sama (last_edited_time Notion bergranularitas detik).
         let mut out: Vec<PageMeta> = vec![];
         let mut cursor: Option<String> = None;
         loop {
@@ -1042,7 +1057,10 @@ impl NotionClient for LiveNotionClient {
                         .and_then(parse_rfc3339_ms)
                         .unwrap_or(0);
                     if let Some(since) = since_ms {
-                        if edited <= since {
+                        // N2: berhenti hanya saat halaman STRICTLY lebih tua
+                        // dari cursor (edited < since); edited == since ikut
+                        // dikembalikan (dicek ulang, dedup lewat hash).
+                        if edited < since {
                             stop = true;
                             break;
                         }
@@ -2474,6 +2492,57 @@ mod tests {
             search_knowledge(&conn, "sk-ant-abc1234567890", None, Some("doc"), None, 10).is_empty()
         );
         assert!(search_knowledge(&conn, "Jebakan", None, Some("doc"), None, 10).is_empty());
+    }
+
+    #[test]
+    fn simpan_judul_rahasia_dikarantina_n1() {
+        // N1: rahasia di JUDUL (isi bersih) harus mengkarantina halaman —
+        // sebelumnya gerbang hanya memeriksa isi. Judul berahasia dikosongkan
+        // supaya rahasia tidak bocor lewat kolom title.
+        let conn = mem_conn();
+        let d = doc(
+            "trap-title",
+            "Kunci cadangan: crsr_1234567890abcdef",
+            "isi bersih tanpa pola rahasia",
+            1000,
+        );
+        assert_eq!(store_page(&conn, &d, 2000), StoreOutcome::Quarantined);
+        let (status, title, text): (String, String, String) = conn
+            .query_row(
+                "SELECT sync_status, title, content_text FROM notion_docs WHERE page_id='trap-title'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "quarantined");
+        assert!(title.is_empty(), "judul berahasia bocor ke DB");
+        assert!(text.is_empty());
+        rebuild_fts(&conn, "notion_docs_fts");
+        assert!(search_knowledge(&conn, "crsr_1234567890abcdef", None, Some("doc"), None, 10).is_empty());
+    }
+
+    #[test]
+    fn simpan_judul_bersih_tetap_tersimpan_n1() {
+        // N1: judul BERSIH pada halaman karantina (rahasia di isi) tetap
+        // disimpan agar halaman bisa diidentifikasi; hanya isi yang dikosongkan.
+        let conn = mem_conn();
+        let d = doc(
+            "trap-clean-title",
+            "Jebakan bersih",
+            "kunci cadangan crsr_1234567890abcdef jangan disebar",
+            1000,
+        );
+        assert_eq!(store_page(&conn, &d, 2000), StoreOutcome::Quarantined);
+        let (status, title, text): (String, String, String) = conn
+            .query_row(
+                "SELECT sync_status, title, content_text FROM notion_docs WHERE page_id='trap-clean-title'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "quarantined");
+        assert_eq!(title, "Jebakan bersih");
+        assert!(text.is_empty());
     }
 
     #[test]

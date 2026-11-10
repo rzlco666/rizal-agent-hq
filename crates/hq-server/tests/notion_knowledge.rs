@@ -211,9 +211,12 @@ fn mock_sync_end_to_end() {
     assert_eq!(by_id(TRAP_DOC)["status"], "quarantined");
 
     // Sync manual kedua = incremental no-op (tidak ada yang berubah).
+    // N2: cutoff inklusif — halaman batas (edited == cursor, di sini
+    // hq-status) ikut dicek ulang sekali per sumber (3 halaman) tapi tidak
+    // ada yang di-update (hash sama -> Unchanged).
     let (code, rep) = post_sync(&srv);
     assert_eq!(code, 200);
-    assert_eq!(rep["pages_checked"], 0);
+    assert_eq!(rep["pages_checked"], 3);
     assert_eq!(rep["pages_updated"], 0);
     assert_eq!(rep["mode"], "mock");
 
