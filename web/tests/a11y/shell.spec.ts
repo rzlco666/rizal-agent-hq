@@ -23,21 +23,39 @@ test('shell has no serious or critical axe violations', async ({ page }) => {
 
 test('focus ring is visible on every interactive control', async ({ page }) => {
   await page.goto('/');
-  for (let i = 0; i < 8; i++) {
-    await page.keyboard.press('Tab');
-    const focus = await page.evaluate(() => {
+  await expect(page.getByRole('button', { name: /buka palet perintah/i })).toBeVisible();
+  const total = await page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((element) => element.getClientRects().length > 0).length
+  );
+  expect(total).toBeGreaterThanOrEqual(8);
+
+  async function currentFocus() {
+    return page.evaluate(() => {
       const element = document.activeElement as HTMLElement | null;
       if (!element || element === document.body) return null;
       const style = getComputedStyle(element);
-      return {
-        tag: element.tagName,
-        style: style.outlineStyle,
-        width: parseFloat(style.outlineWidth)
-      };
+      return { style: style.outlineStyle, width: parseFloat(style.outlineWidth) };
     });
-    expect(focus, `focusable control ${i + 1}`).not.toBeNull();
-    expect(focus?.style, `focusable control ${i + 1}`).not.toBe('none');
-    expect(focus?.width ?? 0, `focusable control ${i + 1}`).toBeGreaterThanOrEqual(2);
+  }
+
+  await page.getByRole('link', { name: /lihat/i }).focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  const first = await currentFocus();
+  expect(first).not.toBeNull();
+  expect(first?.style).not.toBe('none');
+  expect(first?.width ?? 0).toBeGreaterThanOrEqual(2);
+
+  for (let i = 0; i < total - 1; i++) {
+    await page.keyboard.press('Tab');
+    const focus = await currentFocus();
+    expect(focus, `focusable control ${i + 2}`).not.toBeNull();
+    expect(focus?.style, `focusable control ${i + 2}`).not.toBe('none');
+    expect(focus?.width ?? 0, `focusable control ${i + 2}`).toBeGreaterThanOrEqual(2);
   }
 });
 

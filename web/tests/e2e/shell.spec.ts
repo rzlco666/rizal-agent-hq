@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('hq-locale', 'id');
   });
   await page.goto('/');
-  await page.evaluate(() => document.fonts.ready);
+  await expect(page.getByRole('button', { name: /buka palet perintah/i })).toBeVisible();
 });
 
 test('shell has one primary nav and a fixed attention rail', async ({ page }) => {
