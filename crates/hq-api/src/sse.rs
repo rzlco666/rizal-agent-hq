@@ -115,7 +115,7 @@ pub async fn sse_handler(
                     Some((Ok::<_, Infallible>(ev), (Phase::Done, rx, seq)))
                 }
                 Phase::Live => match rx.recv().await {
-                    Ok(patch) if patch.seq.0 <= cursor => Some((
+                    Ok(patch) if should_skip_live_patch(patch.seq.0, cursor) => Some((
                         Ok::<_, Infallible>(Event::default().comment("")),
                         (Phase::Live, rx, cursor),
                     )),
@@ -181,4 +181,20 @@ fn sse_patch_json(patch: &Patch) -> serde_json::Value {
         "upserts": upserts,
         "deletes": patch.deletes.iter().map(|d| serde_json::json!({"kind":d.kind,"id":d.id})).collect::<Vec<_>>(),
     })
+}
+
+fn should_skip_live_patch(patch_seq: i64, replay_cursor: i64) -> bool {
+    patch_seq <= replay_cursor
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_skip_live_patch;
+
+    #[test]
+    fn live_patch_at_or_before_replay_cursor_is_skipped() {
+        assert!(should_skip_live_patch(7, 7));
+        assert!(should_skip_live_patch(6, 7));
+        assert!(!should_skip_live_patch(8, 7));
+    }
 }
