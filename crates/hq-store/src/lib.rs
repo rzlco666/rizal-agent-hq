@@ -151,6 +151,14 @@ pub fn patch_for_event(ev: &Event) -> Patch {
                 status,
             }));
         }
+        EventKind::SessionStarted
+        | EventKind::SessionUpdated
+        | EventKind::SessionEnded
+        | EventKind::LogRecorded => {
+            let mut payload = ev.draft.payload.clone();
+            hq_core::redact_json(&mut payload);
+            upserts.push(PatchEntity::Task(ev.draft.subject.key(), payload));
+        }
         EventKind::AlertRaised
         | EventKind::AlertUpdated
         | EventKind::AlertAcknowledged

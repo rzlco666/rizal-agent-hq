@@ -69,3 +69,58 @@ fn ring_rejects_internal_sequence_hole() {
     }
     assert!(ring.since(Seq(1)).is_none());
 }
+
+#[tokio::test]
+async fn session_and_log_events_produce_redacted_task_patches() {
+    let (store, _dir) = test_store().await;
+    let session_id = "agent:omp/session/s1";
+    let events = [
+        (
+            EventKind::SessionStarted,
+            serde_json::json!({"started_at_ms": 1000}),
+        ),
+        (
+            EventKind::SessionUpdated,
+            serde_json::json!({"updated_at_ms": 2000}),
+        ),
+        (
+            EventKind::SessionEnded,
+            serde_json::json!({"ended_at_ms": 3000}),
+        ),
+        (
+            EventKind::LogRecorded,
+            serde_json::json!({"message":"token ghp_abcdefghijklmnop"}),
+        ),
+    ]
+    .into_iter()
+    .map(|(kind, payload)| EventDraft {
+        event_ts_ms: 1000,
+        kind,
+        subject: Subject::Session(SessionId(session_id.to_string())),
+        source: SourceId("test".to_string()),
+        correlation_id: None,
+        causation_id: None,
+        idempotency_key: None,
+        payload,
+    })
+    .collect();
+    let accepted = Ingestor::new(store).ingest(events).await.unwrap().accepted;
+
+    for mut event in accepted {
+        if event.draft.kind == EventKind::LogRecorded {
+            event.draft.payload = serde_json::json!({"message":"token ghp_abcdefghijklmnop"});
+        }
+        let patch = patch_for_event(&event);
+        assert_eq!(patch.upserts.len(), 1, "{:?}", event.draft.kind);
+        match &patch.upserts[0] {
+            PatchEntity::Task(id, payload) => {
+                assert_eq!(id, session_id);
+                assert!(!payload.to_string().contains("ghp_"));
+                if event.draft.kind != EventKind::LogRecorded {
+                    assert_eq!(payload, &event.draft.payload);
+                }
+            }
+            other => panic!("expected task upsert, got {other:?}"),
+        }
+    }
+}

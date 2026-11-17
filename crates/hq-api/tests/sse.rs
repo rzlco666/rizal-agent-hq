@@ -29,26 +29,40 @@ async fn spawn() -> (SocketAddr, Ingestor, TempDir) {
     (addr, ing, dir)
 }
 
-async fn request(addr: SocketAddr, headers: &[(&str, &str)]) -> String {
-    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
-    let mut request = String::from("GET /api/v1/events/stream HTTP/1.1\r\nHost: localhost\r\n");
-    for (name, value) in headers {
-        request.push_str(name);
-        request.push_str(": ");
-        request.push_str(value);
+async fn request(addr: SocketAddr, headers: &[(&str, &str)], marker: &str) -> String {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut request = String::from("GET /api/v1/events/stream HTTP/1.1\r\nHost: localhost\r\n");
+        for (name, value) in headers {
+            request.push_str(name);
+            request.push_str(": ");
+            request.push_str(value);
+            request.push_str("\r\n");
+        }
         request.push_str("\r\n");
-    }
-    request.push_str("\r\n");
-    stream.write_all(request.as_bytes()).await.unwrap();
-    let mut response = vec![0; 4096];
-    let n = stream.read(&mut response).await.unwrap();
-    String::from_utf8_lossy(&response[..n]).into_owned()
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = String::new();
+        let mut buffer = [0; 4096];
+        loop {
+            let n = stream.read(&mut buffer).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            response.push_str(&String::from_utf8_lossy(&buffer[..n]));
+            if response.contains(marker) {
+                break;
+            }
+        }
+        response
+    })
+    .await
+    .expect("SSE response did not contain the expected marker before timeout")
 }
 
 #[tokio::test]
 async fn sse_returns_event_stream() {
     let (addr, _ing, _dir) = spawn().await;
-    let response = request(addr, &[]).await;
+    let response = request(addr, &[], "\r\n\r\n").await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(
         response
@@ -61,7 +75,7 @@ async fn sse_returns_event_stream() {
 #[tokio::test]
 async fn sse_rejects_forwarded_peer() {
     let (addr, _ing, _dir) = spawn().await;
-    let response = request(addr, &[("X-Forwarded-For", "127.0.0.1")]).await;
+    let response = request(addr, &[("X-Forwarded-For", "127.0.0.1")], "\r\n\r\n").await;
     assert!(response.starts_with("HTTP/1.1 401"), "{response}");
 }
 
@@ -72,9 +86,11 @@ async fn last_event_id_replays_stored_event() {
         .ingest(vec![heartbeat("agent:muse", "one")])
         .await
         .unwrap();
+    let marker = format!("id: {}", event.accepted[0].seq.0);
     let response = request(
         addr,
         &[("Last-Event-ID", &(event.accepted[0].seq.0 - 1).to_string())],
+        &marker,
     )
     .await;
     assert!(
@@ -91,7 +107,7 @@ async fn exactly_1000_events_replay_without_snapshot() {
         .map(|i| heartbeat("agent:muse", &format!("event-{i}")))
         .collect();
     ing.ingest(drafts).await.unwrap();
-    let response = request(addr, &[]).await;
+    let response = request(addr, &[], "id: 1000").await;
     assert!(!response.contains("snapshot_required"), "{response}");
     assert!(response.contains("id: 1"), "{response}");
 }
@@ -103,7 +119,7 @@ async fn more_than_1000_events_requires_snapshot() {
         .map(|i| heartbeat("agent:muse", &format!("event-{i}")))
         .collect();
     ing.ingest(drafts).await.unwrap();
-    let response = request(addr, &[]).await;
+    let response = request(addr, &[], "snapshot_required").await;
     assert!(response.contains("snapshot_required"), "{response}");
 }
 
@@ -111,7 +127,7 @@ async fn more_than_1000_events_requires_snapshot() {
 async fn replay_error_returns_snapshot_required_event() {
     let (addr, ing, _dir) = spawn().await;
     ing.store().test_fail_reads(true);
-    let response = request(addr, &[]).await;
+    let response = request(addr, &[], "snapshot_required").await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(
         response.contains("\"type\":\"snapshot_required\""),
@@ -123,7 +139,7 @@ async fn replay_error_returns_snapshot_required_event() {
 async fn last_seq_error_returns_snapshot_required_event() {
     let (addr, ing, _dir) = spawn().await;
     ing.store().test_fail_last_seq(true);
-    let response = request(addr, &[]).await;
+    let response = request(addr, &[], "snapshot_required").await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(
         response.contains("\"type\":\"snapshot_required\""),
@@ -146,7 +162,12 @@ async fn sse_entity_upserts_include_type_and_redacted_payload() {
     }])
     .await
     .unwrap();
-    let response = request(addr, &[("Last-Event-ID", "0")]).await;
+    let response = request(
+        addr,
+        &[("Last-Event-ID", "0")],
+        r#""payload":{"message":"needs review"}"#,
+    )
+    .await;
     assert!(response.contains("\"type\":\"alert\""), "{response}");
     assert!(
         response.contains("\"payload\":{\"message\":\"needs review\"}"),
@@ -157,7 +178,7 @@ async fn sse_entity_upserts_include_type_and_redacted_payload() {
 #[tokio::test]
 async fn future_last_event_id_requires_snapshot() {
     let (addr, _ing, _dir) = spawn().await;
-    let response = request(addr, &[("Last-Event-ID", "99")]).await;
+    let response = request(addr, &[("Last-Event-ID", "99")], "snapshot_required").await;
     assert!(
         response.contains("\"type\":\"snapshot_required\""),
         "{response}"
