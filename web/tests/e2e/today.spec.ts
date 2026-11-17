@@ -44,6 +44,7 @@ test('ack from rail updates count without reload', async ({ page }) => {
 });
 
 test('offline banner appears and disappears', async ({ page }) => {
+  await expect(page.getByTestId('kpi-working')).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('hq-offline')));
   await expect(page.getByTestId('connection-banner')).toContainText(/Menyambung/);
   await page.evaluate(() => window.dispatchEvent(new Event('hq-online')));
