@@ -24,6 +24,7 @@ sha2 = "0.10"
 base64 = "0.22"
 utoipa = "6"
 getrandom = "0.3"
+ulid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

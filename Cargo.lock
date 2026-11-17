@@ -875,6 +875,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "ulid",
  "utoipa",
 ]
 
@@ -935,6 +936,7 @@ version = "3.0.0"
 name = "hq-server"
 version = "3.0.0"
 dependencies = [
+ "axum",
  "hq-api",
  "hq-connectors",
  "hq-core",

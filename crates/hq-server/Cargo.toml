@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 hq-api = { path = "../hq-api" }
+axum = "0.8"
 hq-connectors = { path = "../hq-connectors" }
 hq-core = { path = "../hq-core" }
 hq-store = { path = "../hq-store" }

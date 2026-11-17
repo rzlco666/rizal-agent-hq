@@ -6,13 +6,14 @@ use crate::ws;
 use axum::{
     Json, Router,
     body::Body,
-    extract::Request,
+    extract::{ConnectInfo, Request},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
 };
 use hq_store::{PatchRing, Store};
 
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::{
     catch_panic::CatchPanicLayer,
@@ -66,6 +67,22 @@ async fn fill_request_id(request: Request, next: Next) -> Response {
     }
     value["request_id"] = serde_json::json!(request_id);
     Response::from_parts(parts, Json(value).into_response().into_body())
+}
+
+/// Runs outside auth: an enabled gate rejects non-loopback peers with 403
+/// before auth can turn the request into a 401; a disabled gate hides the route.
+async fn dev_events_gate(request: Request, next: Next) -> Response {
+    if request.uri().path() != "/api/v1/dev/events" {
+        return next.run(request).await;
+    }
+    let peer = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|connect| connect.0);
+    match crate::handlers::meta::seed_gate(peer) {
+        Ok(()) => next.run(request).await,
+        Err(error) => error.into_response(),
+    }
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -144,10 +161,15 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/openapi.json",
             get(crate::handlers::meta::openapi_json),
         )
+        .route(
+            "/api/v1/dev/events",
+            axum::routing::post(crate::handlers::meta::dev_events),
+        )
         .route("/api/v1/events/stream", get(sse::sse_handler))
         .with_state(state.clone())
         .fallback(crate::static_assets::serve_asset)
         .layer(middleware::from_fn_with_state(state, auth::auth_middleware))
+        .layer(middleware::from_fn(dev_events_gate))
         .layer(middleware::from_fn(fill_request_id))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
