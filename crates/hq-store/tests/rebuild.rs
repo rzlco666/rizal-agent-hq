@@ -13,7 +13,10 @@ async fn rebuild_reproduces_read_model() {
         .await
         .unwrap();
     assert!(report.events > 0);
-    let after = snapshot_json(&store).await;
+    let store2 = Store::open(StoreOptions::for_dir(dir.path()))
+        .await
+        .unwrap();
+    let after = snapshot_json(&store2).await;
     assert_eq!(before, after);
 }
 

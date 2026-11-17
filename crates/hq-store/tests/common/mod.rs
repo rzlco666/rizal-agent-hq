@@ -25,7 +25,9 @@ pub async fn seed_events(store: &Store) {
 
 #[allow(dead_code)]
 pub async fn snapshot_json(store: &Store) -> String {
-    format!("{}", store.count_events().await.unwrap())
+    let n = store.count_events().await.unwrap();
+    let agents = store.agents().await.unwrap();
+    format!("events={}|agents={:?}", n, agents)
 }
 
 #[allow(dead_code)]

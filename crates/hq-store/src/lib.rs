@@ -164,18 +164,20 @@ struct StoreInner {
     writer_tx: std::sync::mpsc::Sender<WriteCmd>,
     read_pool: Pool<SqliteConnectionManager>,
     broadcast: broadcast::Sender<Patch>,
+    #[cfg(any(test, debug_assertions))]
     fail_after_insert: Arc<AtomicBool>,
     integrity_ok: Arc<AtomicBool>,
 }
-
 enum WriteCmd {
     Append {
         drafts: Vec<EventDraft>,
+        #[cfg(any(test, debug_assertions))]
         fail_after_insert: bool,
         reply: oneshot::Sender<Result<Vec<Event>, StoreError>>,
     },
     Rebuild {
         opts: RebuildOptions,
+        db_path: PathBuf,
         reply: oneshot::Sender<Result<RebuildReport, StoreError>>,
     },
 }
@@ -253,9 +255,11 @@ impl Store {
     pub async fn open(opts: StoreOptions) -> Result<Self, StoreError> {
         let opts2 = opts.clone();
         let (txw, rxw) = std::sync::mpsc::channel::<WriteCmd>();
+        #[cfg(any(test, debug_assertions))]
         let fail_flag = Arc::new(AtomicBool::new(false));
-        let integrity_flag = Arc::new(AtomicBool::new(false));
+        #[cfg(any(test, debug_assertions))]
         let fail_flag_outer = fail_flag.clone();
+        let integrity_flag = Arc::new(AtomicBool::new(false));
         let integrity_flag_outer = integrity_flag.clone();
         let (broadcast_tx, _) = broadcast::channel(1024);
         let broadcast_for_thread = broadcast_tx.clone();
@@ -273,12 +277,11 @@ impl Store {
                 conn.execute_batch("PRAGMA foreign_keys=ON;")?;
                 run_migrations(&mut conn)?;
                 let ok = check_integrity(&conn);
-                let fail_flag_t = fail_flag.clone();
                 let opts_t = opts2.clone();
                 let bc = broadcast_for_thread.clone();
                 let projs = projectors;
                 std::thread::spawn(move || {
-                    writer_loop(conn, rxw, fail_flag_t, opts_t, bc, projs);
+                    writer_loop(conn, rxw, opts_t, bc, projs);
                 });
                 let manager = SqliteConnectionManager::file(&opts2.path).with_init(move |c| {
                     c.execute_batch("PRAGMA query_only=ON;")?;
@@ -298,21 +301,25 @@ impl Store {
             writer_tx: txw,
             read_pool: pool,
             broadcast: broadcast_tx,
+            #[cfg(any(test, debug_assertions))]
             fail_after_insert: fail_flag_outer.clone(),
             integrity_ok: integrity_flag_outer,
         });
         Ok(Self { inner })
     }
 
+    #[cfg(any(test, debug_assertions))]
     pub fn test_fail_after_insert(&self, v: bool) {
         self.inner.fail_after_insert.store(v, Ordering::SeqCst);
     }
 
     pub async fn append(&self, drafts: Vec<EventDraft>) -> Result<Vec<Event>, StoreError> {
         let (reply_tx, reply_rx) = oneshot::channel();
+        #[cfg(any(test, debug_assertions))]
         let fail = self.inner.fail_after_insert.load(Ordering::SeqCst);
         let cmd = WriteCmd::Append {
             drafts,
+            #[cfg(any(test, debug_assertions))]
             fail_after_insert: fail,
             reply: reply_tx,
         };
@@ -636,6 +643,7 @@ impl Store {
             .writer_tx
             .send(WriteCmd::Rebuild {
                 opts,
+                db_path: self.inner.opts.path.clone(),
                 reply: reply_tx,
             })
             .map_err(|_| StoreError::ChannelClosed)?;
@@ -743,7 +751,6 @@ fn parse_subject(s: &str) -> Subject {
 fn writer_loop(
     mut conn: Connection,
     rx: std::sync::mpsc::Receiver<WriteCmd>,
-    _fail_flag: Arc<AtomicBool>,
     _opts: StoreOptions,
     bc: broadcast::Sender<Patch>,
     projectors: Vec<Box<dyn projections::Projector>>,
@@ -752,15 +759,24 @@ fn writer_loop(
         match cmd {
             WriteCmd::Append {
                 drafts,
+                #[cfg(any(test, debug_assertions))]
                 fail_after_insert,
                 reply,
             } => {
+                #[cfg(any(test, debug_assertions))]
                 let fail = fail_after_insert;
+                #[cfg(any(test, debug_assertions))]
                 let res = do_append(&mut conn, drafts, fail, bc.clone(), &projectors);
+                #[cfg(not(any(test, debug_assertions)))]
+                let res = do_append(&mut conn, drafts, bc.clone(), &projectors);
                 let _ = reply.send(res);
             }
-            WriteCmd::Rebuild { opts, reply } => {
-                let res = do_rebuild(&mut conn, &projectors, opts);
+            WriteCmd::Rebuild {
+                opts,
+                db_path,
+                reply,
+            } => {
+                let res = do_rebuild(&mut conn, &projectors, opts, db_path);
                 let _ = reply.send(res);
             }
         }
@@ -770,7 +786,7 @@ fn writer_loop(
 fn do_append(
     conn: &mut Connection,
     drafts: Vec<EventDraft>,
-    fail_after_insert: bool,
+    #[cfg(any(test, debug_assertions))] fail_after_insert: bool,
     bc: broadcast::Sender<Patch>,
     projectors: &[Box<dyn projections::Projector>],
 ) -> Result<Vec<Event>, StoreError> {
@@ -807,7 +823,8 @@ fn do_append(
             ],
         )?;
         let seq = tx.last_insert_rowid();
-        // failpoint (test-only behavior, but available in all builds for tests)
+        // failpoint (test-only)
+        #[cfg(any(test, debug_assertions))]
         if fail_after_insert {
             tx.rollback()?;
             return Err(StoreError::Validation("failpoint".into()));
@@ -862,6 +879,7 @@ fn do_rebuild(
     conn: &mut Connection,
     projectors: &[Box<dyn projections::Projector>],
     opts: RebuildOptions,
+    db_path: PathBuf,
 ) -> Result<RebuildReport, StoreError> {
     let start = std::time::Instant::now();
     // read all events ordered
@@ -889,11 +907,11 @@ fn do_rebuild(
             if let Some(p) = path.parent() {
                 std::fs::create_dir_all(p)?;
             }
+            let _ = std::fs::remove_file(&path);
             // build shadow db
             let mut shconn = Connection::open(&path)?;
             shconn.execute_batch("PRAGMA journal_mode=WAL;")?;
             run_migrations(&mut shconn)?;
-            // reset + replay
             {
                 let tx = shconn.transaction_with_behavior(TransactionBehavior::Immediate)?;
                 for p in projectors {
@@ -904,7 +922,6 @@ fn do_rebuild(
                         p.apply(&tx, ev)?;
                     }
                 }
-                // checkpoint
                 let last_seq = events.last().map(|e| e.seq.0).unwrap_or(0);
                 tx.execute(
                     "INSERT INTO projection_checkpoint (name,seq) VALUES ('all',?1) ON CONFLICT(name) DO UPDATE SET seq=excluded.seq",
@@ -912,29 +929,19 @@ fn do_rebuild(
                 )?;
                 tx.commit()?;
             }
-            // close shconn
             drop(shconn);
-            // also rebuild in place on main conn
-            {
-                let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                for p in projectors {
-                    p.reset(&tx)?;
-                }
-                for ev in &events {
-                    for p in projectors {
-                        p.apply(&tx, ev)?;
-                    }
-                }
-                let last_seq = events.last().map(|e| e.seq.0).unwrap_or(0);
-                tx.execute(
-                    "INSERT INTO projection_checkpoint (name,seq) VALUES ('all',?1) ON CONFLICT(name) DO UPDATE SET seq=excluded.seq",
-                    params![last_seq],
-                )?;
-                tx.commit()?;
-            }
-            // swap file (best-effort): rename main db? Skip to avoid breaking open handle; shadow remains.
-            // fsync dir of path
-            if let Some(parent) = path.parent()
+            // swap files
+            let mut old_name = db_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "hq.db".to_string());
+            old_name.push_str(".old");
+            let old_path = db_path.with_file_name(old_name);
+            let _ = std::fs::remove_file(&old_path);
+            std::fs::rename(&db_path, &old_path)?;
+            std::fs::rename(&path, &db_path)?;
+            let _ = std::fs::remove_file(&old_path);
+            if let Some(parent) = db_path.parent()
                 && let Ok(d) = std::fs::File::open(parent)
             {
                 let _ = d.sync_all();
