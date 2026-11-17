@@ -54,7 +54,7 @@ write_evidence() {
   # Komando bukti dibatasi waktu: omp stats dapat menggantung bila runtime sibuk.
   # Argumen ps sengaja dihilangkan karena dapat memuat secret.
   timeout 10s ps -eo pid,ppid,etime,stat,comm > "$dir/ps.txt" 2>/dev/null || true
-  timeout 5s omp stats > "$dir/omp-stats.txt" 2>&1 || true
+  timeout 20s omp stats --summary > "$dir/omp-stats.txt" 2>&1 || true
   timeout 10s tmux ls > "$dir/tmux.txt" 2>&1 || true
   timeout 10s docker ps > "$dir/docker.txt" 2>&1 || true
   timeout 10s git -C "$repo_dir" log -1 > "$dir/git.txt" 2>&1 || true

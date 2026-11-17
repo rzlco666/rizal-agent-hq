@@ -6,10 +6,11 @@ checker="$(cd -- "$here/.." && pwd)/ci-config.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/.github/workflows" "$tmp/tools/checks" "$tmp/tools/parity"
+mkdir -p "$tmp/.github/workflows" "$tmp/tools/checks" "$tmp/tools/parity/fixtures"
 for path in Cargo.toml Cargo.lock rust-toolchain.toml deny.toml \
   tools/checks/ci-config.sh tools/parity/freeze.sh tools/parity/verify.sh \
-  tools/parity/aliases.json tools/parity/normalize.md; do
+  tools/parity/aliases.json tools/parity/normalize.md \
+  tools/parity/fixtures/MANIFEST.sha256; do
   printf 'placeholder\n' > "$tmp/$path"
 done
 

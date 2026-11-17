@@ -17,9 +17,10 @@ dalam satu binary tanpa CDN saat runtime. `00-design.md` §8 K3, §14 dan
 - Teks UI lewat i18n ID default, EN, 中文; tidak ada string hardcoded. Waktu
   disimpan UTC ms dan tampil di `Asia/Jakarta` dengan `tabular-nums`.
 - UI, font, dan ikon di-embed ke binary; tidak ada CDN saat runtime.
-- Manajer paket: **pnpm 10.34.9** terpasang dari nvm WSL (Node v26.2.0),
-  `which pnpm` → `/home/rizal/.nvm/versions/node/v26.2.0/bin/pnpm`.
-  pnpm Windows di `/mnt/d/laragon/...` tidak dipakai. Lockfile dikomit dan
+- Manajer paket: **pnpm 10.34.9** diaktifkan lewat **corepack 0.34.0**
+  dari toolchain WSL nvm (Node v26.2.0); `which pnpm` dan `which corepack`
+  keduanya di `/home/rizal/.nvm/versions/node/v26.2.0/bin`, bukan
+  `/mnt/d/laragon/...`. pnpm Windows tidak dipakai. Lockfile dikomit dan
   pemasangan memakai `ignore-scripts`.
 
 ## Konsekuensi

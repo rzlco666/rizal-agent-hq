@@ -17,6 +17,7 @@ required=(
   tools/parity/verify.sh
   tools/parity/aliases.json
   tools/parity/normalize.md
+  tools/parity/fixtures/MANIFEST.sha256
 )
 
 for path in "${required[@]}"; do
