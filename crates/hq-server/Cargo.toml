@@ -13,3 +13,4 @@ hq-connectors = { path = "../hq-connectors" }
 hq-core = { path = "../hq-core" }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+toml_edit = "0.25"

@@ -29,7 +29,7 @@ Tidak ada direktori log: tracing ke journald (§8).
 
 | Path | Isi | Mode | Rahasia |
 |---|---|---|---|
-| `config.toml` | setelan operator: `[maintenance]`, `[notifications]`, `[knowledge]` | `0644` | tidak |
+| `config.toml` | setelan operator: `[maintenance]`, `[notifications]`, `[knowledge]`, `repos = ["/path/to/repo"]` | `0644` | tidak |
 | `policy.yaml` | policy capability (§04 §3) | `0644` | tidak |
 | `automations.yaml` | rule otomasi + `notify` (S11) | `0644` | tidak |
 | `shell.yaml` | allowlist shell (§04 §6.5) | `0644` | tidak |

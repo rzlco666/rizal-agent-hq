@@ -25,8 +25,7 @@ pub async fn run(args: &[String]) -> i32 {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"));
-    // No repository configuration is registered yet; an empty list deliberately skips Git probes.
-    let probes = Probes::collect(&[], &home);
+    let probes = Probes::collect(&configured_repos(&home), &home);
     let now_ms = WallClock.now_ms();
     let adapter = ProcessPresenceAdapter::default();
     let ctx = CollectCtx {
@@ -57,4 +56,51 @@ fn event_json(event: &EventDraft) -> serde_json::Value {
         "source": event.source.0,
         "payload": event.payload,
     })
+}
+
+fn configured_repos(home: &std::path::Path) -> Vec<String> {
+    let config_dir = std::env::var_os("HQ_CONFIG")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .map(|path| path.join("rizal-agent-hq"))
+        })
+        .unwrap_or_else(|| home.join(".config").join("rizal-agent-hq"));
+    std::fs::read_to_string(config_dir.join("config.toml"))
+        .ok()
+        .map(|contents| parse_repos_from_config(&contents))
+        .unwrap_or_default()
+}
+
+fn parse_repos_from_config(contents: &str) -> Vec<String> {
+    use std::str::FromStr;
+    let Ok(document) = toml_edit::DocumentMut::from_str(contents) else {
+        return Vec::new();
+    };
+    document
+        .get("repos")
+        .and_then(toml_edit::Item::as_array)
+        .map(|repos| {
+            repos
+                .iter()
+                .filter_map(toml_edit::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_repos_from_config;
+
+    #[test]
+    fn repos_default_to_empty_and_read_configured_paths() {
+        assert!(parse_repos_from_config("").is_empty());
+        assert_eq!(
+            parse_repos_from_config("repos = [\"/work/alpha\", \"/work/beta\"]"),
+            vec!["/work/alpha", "/work/beta"]
+        );
+    }
 }
