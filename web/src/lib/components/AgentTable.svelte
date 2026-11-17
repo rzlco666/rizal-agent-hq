@@ -60,31 +60,31 @@
       {:else}
         {#each visible as agent (agent.id)}
           <tr>
-            <td>
+            <td colspan="6">
               <a
                 class="row-link"
                 data-testid="agent-row"
                 href={`/agents/${encodeURIComponent(agent.id)}`}
               >
-                <AgentMonogram name={agent.name} status={asStatus(agent.status)} decorative />
                 <span class="identity">
-                  <span class="name">{agent.name}</span>
-                  <span class="role">agent</span>
+                  <AgentMonogram name={agent.name} status={asStatus(agent.status)} decorative />
+                  <span class="names">
+                    <span class="name">{agent.name}</span>
+                    <span class="role">agent</span>
+                  </span>
                 </span>
+                <span class="status-cell">
+                  <span data-testid="status-dot"><StatusDot status={asStatus(agent.status)} /></span>
+                  <span class="sr-only">{agent.status}</span>
+                </span>
+                <span data-testid="activity" class="activity" title={activity(agent.status)}>
+                  {activity(agent.status)}
+                </span>
+                <span class="mono muted">—</span>
+                <span class="mono num muted">—</span>
+                <span class="mono num">{agent.alerts || '—'}</span>
               </a>
             </td>
-            <td>
-              <span data-testid="status-dot"><StatusDot status={asStatus(agent.status)} /></span>
-              <span class="sr-only">{agent.status}</span>
-            </td>
-            <td>
-              <span data-testid="activity" class="activity" title={activity(agent.status)}>
-                {activity(agent.status)}
-              </span>
-            </td>
-            <td class="mono muted">—</td>
-            <td class="mono num muted">—</td>
-            <td class="mono num">{agent.alerts || '—'}</td>
           </tr>
         {/each}
       {/if}
@@ -132,13 +132,15 @@
   }
 
   .row-link {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(160px, 2fr) 90px minmax(180px, 3fr) 72px 72px 48px;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     min-height: 44px;
     color: inherit;
     text-decoration: none;
   }
+
   .row-link:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
@@ -157,9 +159,23 @@
 
   .identity {
     display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .names {
+    display: flex;
     min-width: 0;
     flex-direction: column;
   }
+
+  .status-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
 
   .name {
     overflow: hidden;
@@ -210,10 +226,14 @@
   @media (max-width: 767px) {
     .identity .role,
     th:nth-child(4),
-    td:nth-child(4),
     th:nth-child(5),
-    td:nth-child(5) {
+    .row-link > span:nth-child(4),
+    .row-link > span:nth-child(5) {
       display: none;
+    }
+
+    .row-link {
+      grid-template-columns: minmax(0, 2fr) 72px minmax(0, 2fr) 32px;
     }
 
     td {

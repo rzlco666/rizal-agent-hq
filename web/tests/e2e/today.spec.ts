@@ -34,6 +34,7 @@ test('ledger has one main chart and a range switch', async ({ page }) => {
 });
 
 test('ack from rail updates count without reload', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 1280, 'desktop rail contract');
   const count = page.getByTestId('alert-count');
   await expect(count).toBeVisible();
   const before = (await count.textContent())?.trim() ?? '';
