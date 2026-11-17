@@ -9,8 +9,8 @@ pub mod handlers;
 pub mod health;
 pub mod openapi;
 pub mod router;
-pub mod state;
 pub mod sse;
+pub mod state;
 pub mod ws;
 
 pub use router::{api_router, build_router};

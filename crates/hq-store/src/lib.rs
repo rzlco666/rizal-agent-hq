@@ -4,6 +4,7 @@ pub mod auth;
 pub mod error;
 pub mod ingest;
 pub mod projections;
+pub mod reads;
 pub mod ring;
 
 use hq_humanize::render;
@@ -22,6 +23,7 @@ pub use hq_core::*;
 pub use hq_humanize::{Locale, LogLevel, TaskDeriver, TaskProjection, TaskStepProjection};
 pub use ingest::{IngestReport, Ingestor};
 pub use projections::Projector;
+pub use reads::{AlertView as StoreAlertView, ChangedFile, CostSummary, SessionView, TaskView};
 pub use ring::PatchRing;
 // ---------- Options ----------
 #[derive(Clone, Debug)]

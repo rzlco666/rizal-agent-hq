@@ -24,9 +24,18 @@ pub struct PairingRecord {
 
 pub enum AuthWrite {
     InsertDevice(DeviceRecord),
-    RevokeDevice { id: String, at_ms: i64 },
-    CreatePairing { code_hash: String, record: PairingRecord },
-    ConsumePairing { code_hash: String, now_ms: i64 },
+    RevokeDevice {
+        id: String,
+        at_ms: i64,
+    },
+    CreatePairing {
+        code_hash: String,
+        record: PairingRecord,
+    },
+    ConsumePairing {
+        code_hash: String,
+        now_ms: i64,
+    },
 }
 
 fn row_to_device(row: &rusqlite::Row<'_>) -> Result<DeviceRecord, rusqlite::Error> {
@@ -47,7 +56,10 @@ fn pairing_key(code_hash: &str) -> String {
     format!("pairing:{code_hash}")
 }
 
-pub fn apply_write(conn: &mut Connection, op: AuthWrite) -> Result<Option<PairingRecord>, StoreError> {
+pub fn apply_write(
+    conn: &mut Connection,
+    op: AuthWrite,
+) -> Result<Option<PairingRecord>, StoreError> {
     match op {
         AuthWrite::InsertDevice(device) => {
             conn.execute(
@@ -90,16 +102,19 @@ pub fn apply_write(conn: &mut Connection, op: AuthWrite) -> Result<Option<Pairin
             let tx = conn.transaction()?;
             let key = pairing_key(&code_hash);
             let value: Option<String> = tx
-                .query_row("SELECT value FROM settings WHERE key=?1", params![key], |r| r.get(0))
+                .query_row(
+                    "SELECT value FROM settings WHERE key=?1",
+                    params![key],
+                    |r| r.get(0),
+                )
                 .optional()?;
             tx.execute("DELETE FROM settings WHERE key=?1", params![key])?;
             tx.commit()?;
             let Some(value) = value else {
                 return Ok(None);
             };
-            let record: PairingRecord = serde_json::from_str(&value).map_err(|e| {
-                StoreError::Validation(format!("corrupt pairing record: {e}"))
-            })?;
+            let record: PairingRecord = serde_json::from_str(&value)
+                .map_err(|e| StoreError::Validation(format!("corrupt pairing record: {e}")))?;
             if record.expires_ms <= now_ms {
                 return Ok(None);
             }
@@ -111,18 +126,23 @@ pub fn apply_write(conn: &mut Connection, op: AuthWrite) -> Result<Option<Pairin
 impl Store {
     pub async fn insert_device(&self, device: DeviceRecord) -> Result<(), StoreError> {
         let (reply_tx, reply_rx) = oneshot_channel();
-        self.inner.writer_tx
+        self.inner
+            .writer_tx
             .send(crate::WriteCmd::AuthWrite {
                 op: AuthWrite::InsertDevice(device),
                 reply: reply_tx,
             })
             .map_err(|_| StoreError::ChannelClosed)?;
-        reply_rx.await.map_err(|_| StoreError::ChannelClosed)?.map(|_| ())
+        reply_rx
+            .await
+            .map_err(|_| StoreError::ChannelClosed)?
+            .map(|_| ())
     }
 
     pub async fn revoke_device(&self, id: &str, at_ms: i64) -> Result<(), StoreError> {
         let (reply_tx, reply_rx) = oneshot_channel();
-        self.inner.writer_tx
+        self.inner
+            .writer_tx
             .send(crate::WriteCmd::AuthWrite {
                 op: AuthWrite::RevokeDevice {
                     id: id.to_string(),
@@ -131,7 +151,10 @@ impl Store {
                 reply: reply_tx,
             })
             .map_err(|_| StoreError::ChannelClosed)?;
-        reply_rx.await.map_err(|_| StoreError::ChannelClosed)?.map(|_| ())
+        reply_rx
+            .await
+            .map_err(|_| StoreError::ChannelClosed)?
+            .map(|_| ())
     }
 
     pub async fn create_pairing(
@@ -140,7 +163,8 @@ impl Store {
         record: PairingRecord,
     ) -> Result<(), StoreError> {
         let (reply_tx, reply_rx) = oneshot_channel();
-        self.inner.writer_tx
+        self.inner
+            .writer_tx
             .send(crate::WriteCmd::AuthWrite {
                 op: AuthWrite::CreatePairing {
                     code_hash: code_hash.to_string(),
@@ -149,7 +173,10 @@ impl Store {
                 reply: reply_tx,
             })
             .map_err(|_| StoreError::ChannelClosed)?;
-        reply_rx.await.map_err(|_| StoreError::ChannelClosed)?.map(|_| ())
+        reply_rx
+            .await
+            .map_err(|_| StoreError::ChannelClosed)?
+            .map(|_| ())
     }
 
     pub async fn consume_pairing(
@@ -158,7 +185,8 @@ impl Store {
         now_ms: i64,
     ) -> Result<Option<PairingRecord>, StoreError> {
         let (reply_tx, reply_rx) = oneshot_channel();
-        self.inner.writer_tx
+        self.inner
+            .writer_tx
             .send(crate::WriteCmd::AuthWrite {
                 op: AuthWrite::ConsumePairing {
                     code_hash: code_hash.to_string(),
@@ -213,4 +241,3 @@ fn oneshot_channel<T>() -> (
 ) {
     tokio::sync::oneshot::channel()
 }
-
