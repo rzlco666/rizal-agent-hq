@@ -3,6 +3,7 @@ import { ui } from '$lib/stores/ui.svelte';
 import en from '$lib/i18n/en.json';
 import id from '$lib/i18n/id.json';
 import zh from '$lib/i18n/zh.json';
+import { findHardcodedCopy, localeKeyIssues } from '../../scripts/check-i18n.mjs';
 import { beforeEach, expect, test } from 'vitest';
 
 function keys(catalog: Record<string, string>): string[] {
@@ -35,4 +36,18 @@ test('params replace without html injection', () => {
   host.textContent = rendered;
   expect(host.querySelector('img')).toBeNull();
   expect(host.textContent).toContain(payload);
+});
+
+test('html lang follows the locale map', () => {
+  ui.locale = 'zh';
+  expect(document.documentElement.lang).toBe('zh-Hans');
+  ui.locale = 'en';
+  expect(document.documentElement.lang).toBe('en');
+  ui.locale = 'id';
+  expect(document.documentElement.lang).toBe('id');
+});
+
+test('ui source has no hardcoded copy', () => {
+  expect(localeKeyIssues()).toEqual([]);
+  expect(findHardcodedCopy()).toEqual([]);
 });

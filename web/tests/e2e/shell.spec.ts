@@ -27,6 +27,14 @@ test('mobile shell shows a 56px bottom nav and hides the attention rail', async 
   await expect(page.getByTestId('shell-main')).toHaveCSS('padding-bottom', '72px');
 });
 
+
+test('palette labels follow a locale change', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 1280, 'locale switcher is desktop-only');
+  await page.getByRole('button', { name: 'EN' }).click();
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('option', { name: 'Office' })).toBeVisible();
+  await page.keyboard.press('Escape');
+});
 test('cmd+k opens palette, filters, escapes', async ({ page }) => {
   await page.keyboard.press('Control+k');
   await expect(page.getByRole('dialog', { name: /perintah/i })).toBeVisible();
