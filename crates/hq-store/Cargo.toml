@@ -5,3 +5,17 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+hq-core = { path = "../hq-core" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ulid = { workspace = true }
+tempfile = "3"
+insta = "1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
