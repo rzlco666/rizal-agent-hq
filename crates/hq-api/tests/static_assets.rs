@@ -41,7 +41,7 @@ async fn dev_directory_rejects_path_traversal() {
     let parent = tempfile::tempdir().unwrap();
     let web = parent.path().join("web");
     std::fs::create_dir(&web).unwrap();
-    std::fs::write(parent.path().join("secret.txt"), "TOP-SECRET").unwrap();
+    std::fs::write(web.join("index.html"), "<!doctype html><html></html>").unwrap();
     unsafe { std::env::set_var("HQ_WEB_DIR", &web) };
 
     let app = Router::new().fallback(hq_api::static_assets::serve_asset);

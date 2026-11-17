@@ -73,6 +73,8 @@ jobs:
       - name: Install dependencies
         working-directory: web
         run: corepack pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install API generator dependencies
+        run: npm ci --prefix tools/gen-api --ignore-scripts
 
       - name: API schema parity
         run: corepack pnpm -C web api:check
