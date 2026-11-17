@@ -7,6 +7,7 @@ use hq_core::*;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, TransactionBehavior, params};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,6 +49,15 @@ pub struct Health {
     pub wal_size_bytes: u64,
     pub last_seq: i64,
     pub integrity_ok: bool,
+}
+
+// ---------- Overview ----------
+#[derive(Debug, Clone, Default)]
+pub struct Overview {
+    pub agents: i64,
+    pub alerts_open: i64,
+    pub usage_requests: i64,
+    pub usage_input_tokens: i64,
 }
 
 // ---------- Usage ----------
@@ -164,6 +174,10 @@ enum WriteCmd {
         fail_after_insert: bool,
         reply: oneshot::Sender<Result<Vec<Event>, StoreError>>,
     },
+    Rebuild {
+        opts: RebuildOptions,
+        reply: oneshot::Sender<Result<RebuildReport, StoreError>>,
+    },
 }
 
 #[derive(Clone)]
@@ -184,7 +198,9 @@ fn run_migrations(conn: &mut Connection) -> Result<(), StoreError> {
         conn.execute_batch(sql)?;
     }
     let tx = conn.transaction()?;
-    let checksum = format!("{:x}", md5_like(sql));
+    let mut hasher = Sha256::new();
+    hasher.update(sql.as_bytes());
+    let checksum = format!("{:x}", hasher.finalize());
     let exists: i64 = tx
         .query_row(
             "SELECT COUNT(*) FROM _migrations WHERE version=1",
@@ -200,15 +216,6 @@ fn run_migrations(conn: &mut Connection) -> Result<(), StoreError> {
     }
     tx.commit()?;
     Ok(())
-}
-
-fn md5_like(s: &str) -> u64 {
-    // simple hash
-    let mut h: u64 = 0;
-    for b in s.bytes() {
-        h = h.wrapping_mul(31).wrapping_add(b as u64);
-    }
-    h
 }
 
 fn check_integrity(conn: &Connection) -> bool {
@@ -234,6 +241,14 @@ fn status_from_str(s: &str) -> Status {
     }
 }
 
+fn make_projectors() -> Vec<Box<dyn projections::Projector>> {
+    vec![
+        Box::new(projections::agents::AgentProjector),
+        Box::new(projections::usage::UsageProjector),
+        Box::new(projections::alerts::AlertProjector),
+    ]
+}
+
 impl Store {
     pub async fn open(opts: StoreOptions) -> Result<Self, StoreError> {
         let opts2 = opts.clone();
@@ -244,6 +259,7 @@ impl Store {
         let integrity_flag_outer = integrity_flag.clone();
         let (broadcast_tx, _) = broadcast::channel(1024);
         let broadcast_for_thread = broadcast_tx.clone();
+        let projectors = make_projectors();
 
         let pool = tokio::task::spawn_blocking(
             move || -> Result<Pool<SqliteConnectionManager>, StoreError> {
@@ -260,8 +276,9 @@ impl Store {
                 let fail_flag_t = fail_flag.clone();
                 let opts_t = opts2.clone();
                 let bc = broadcast_for_thread.clone();
+                let projs = projectors;
                 std::thread::spawn(move || {
-                    writer_loop(conn, rxw, fail_flag_t, opts_t, bc);
+                    writer_loop(conn, rxw, fail_flag_t, opts_t, bc, projs);
                 });
                 let manager = SqliteConnectionManager::file(&opts2.path).with_init(move |c| {
                     c.execute_batch("PRAGMA query_only=ON;")?;
@@ -281,7 +298,7 @@ impl Store {
             writer_tx: txw,
             read_pool: pool,
             broadcast: broadcast_tx,
-            fail_after_insert: fail_flag_outer,
+            fail_after_insert: fail_flag_outer.clone(),
             integrity_ok: integrity_flag_outer,
         });
         Ok(Self { inner })
@@ -294,13 +311,14 @@ impl Store {
     pub async fn append(&self, drafts: Vec<EventDraft>) -> Result<Vec<Event>, StoreError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let fail = self.inner.fail_after_insert.load(Ordering::SeqCst);
+        let cmd = WriteCmd::Append {
+            drafts,
+            fail_after_insert: fail,
+            reply: reply_tx,
+        };
         self.inner
             .writer_tx
-            .send(WriteCmd::Append {
-                drafts,
-                fail_after_insert: fail,
-                reply: reply_tx,
-            })
+            .send(cmd)
             .map_err(|_| StoreError::ChannelClosed)?;
         reply_rx.await.map_err(|_| StoreError::ChannelClosed)?
     }
@@ -343,8 +361,66 @@ impl Store {
     pub async fn agent(
         &self,
         id: &AgentId,
-        _as_of: Option<Ms>,
+        as_of: Option<Ms>,
     ) -> Result<Option<AgentDetail>, StoreError> {
+        if let Some(asof) = as_of {
+            // replay per agent from events with event_ts_ms <= asof
+            let pool = self.inner.read_pool.clone();
+            let idstr = id.0.clone();
+            let asof: i64 = asof;
+            return tokio::task::spawn_blocking(move || -> Result<Option<AgentDetail>, StoreError> {
+                let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+                // collect events for this subject ordered seq
+                let mut stmt = conn.prepare(
+                    "SELECT kind,payload,event_ts_ms FROM events WHERE subject=?1 AND event_ts_ms <= ?2 ORDER BY seq",
+                )?;
+                let rows = stmt.query_map(params![idstr.clone(), asof], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+                })?;
+                let mut status = Status::Bekerja;
+                let mut seen = false;
+                for r in rows {
+                    let (kind, payload, _ts) = r?;
+                    if kind.starts_with("agent_") {
+                        seen = true;
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&payload)
+                            && let Some(s) = v.get("status").and_then(|x| x.as_str()) {
+                            status = status_from_str(s);
+                        }
+                    }
+                }
+                // archive
+                let mut stmt2 = conn.prepare(
+                    "SELECT kind,payload,event_ts_ms FROM events_archive WHERE subject=?1 AND event_ts_ms <= ?2 ORDER BY seq",
+                )?;
+                let rows2 = stmt2.query_map(params![idstr.clone(), asof], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+                })?;
+                for r in rows2 {
+                    let (kind, payload, _ts) = r?;
+                    if kind.starts_with("agent_") {
+                        seen = true;
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&payload)
+                            && let Some(s) = v.get("status").and_then(|x| x.as_str()) {
+                            status = status_from_str(s);
+                        }
+                    }
+                }
+                if !seen {
+                    return Ok(None);
+                }
+                Ok(Some(AgentDetail {
+                    card: AgentCard {
+                        id: idstr.clone(),
+                        name: agent_name(&idstr),
+                        status,
+                    },
+                }))
+            })
+            .await
+            .map_err(|e| StoreError::Pool(e.to_string()))?;
+        }
+        // normal read
         let pool = self.inner.read_pool.clone();
         let id = id.0.clone();
         tokio::task::spawn_blocking(move || -> Result<Option<AgentDetail>, StoreError> {
@@ -375,27 +451,29 @@ impl Store {
         let agent = q.agent.clone();
         tokio::task::spawn_blocking(move || -> Result<UsageReport, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
-            let (input,): (i64,) = if let Some(a) = agent {
-                conn.query_row(
-                    "SELECT COALESCE(SUM(input_tokens),0) FROM usage_minute WHERE agent_id=?1",
-                    params![a],
-                    |r| Ok((r.get(0)?,)),
-                )?
+            let sql = if agent.is_some() {
+                "SELECT COALESCE(SUM(requests),0),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_tokens),0),COALESCE(SUM(cash_usd),0),COALESCE(SUM(shadow_usd),0) FROM usage_minute WHERE agent_id=?1"
             } else {
-                conn.query_row(
-                    "SELECT COALESCE(SUM(input_tokens),0) FROM usage_minute",
-                    [],
-                    |r| Ok((r.get(0)?,)),
-                )?
+                "SELECT COALESCE(SUM(requests),0),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_tokens),0),COALESCE(SUM(cash_usd),0),COALESCE(SUM(shadow_usd),0) FROM usage_minute"
             };
+            let (requests, input, output, cache, cash, shadow): (i64, i64, i64, i64, f64, f64) =
+                if let Some(a) = agent {
+                    conn.query_row(sql, params![a], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+                    })?
+                } else {
+                    conn.query_row(sql, [], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+                    })?
+                };
             Ok(UsageReport {
                 total: UsageTotals {
-                    requests: 0,
+                    requests,
                     input_tokens: input,
-                    output_tokens: 0,
-                    cache_tokens: 0,
-                    cash_usd: 0.0,
-                    shadow_usd: 0.0,
+                    output_tokens: output,
+                    cache_tokens: cache,
+                    cash_usd: cash,
+                    shadow_usd: shadow,
                 },
             })
         })
@@ -413,25 +491,30 @@ impl Store {
         let limit = limit.min(1000);
         tokio::task::spawn_blocking(move || -> Result<Vec<Event>, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
-            // read events with seq > since, plus archive if needed
-            let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events WHERE seq > ?1 ORDER BY seq LIMIT ?2")?;
-            let mut rows = stmt.query(params![since, limit as i64])?;
             let mut out = Vec::new();
-            while let Some(r) = rows.next()? {
-                out.push(row_to_event(r)?);
-            }
-            if out.len() < limit {
-                // archive
-                let mut stmt2 = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events_archive WHERE seq > ?1 ORDER BY seq LIMIT ?2")?;
-                let mut rows2 = stmt2.query(params![since, (limit - out.len()) as i64])?;
-                while let Some(r) = rows2.next()? {
+            // events
+            {
+                let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events WHERE seq > ?1")?;
+                let mut rows = stmt.query(params![since])?;
+                while let Some(r) = rows.next()? {
                     out.push(row_to_event(r)?);
                 }
-                out.sort_by_key(|e| e.seq.0);
-                out.truncate(limit);
             }
+            // archive
+            {
+                let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events_archive WHERE seq > ?1")?;
+                let mut rows = stmt.query(params![since])?;
+                while let Some(r) = rows.next()? {
+                    out.push(row_to_event(r)?);
+                }
+            }
+            out.sort_by_key(|e| e.seq.0);
+            out.dedup_by_key(|e| e.seq.0);
+            out.truncate(limit);
             Ok(out)
-        }).await.map_err(|e| StoreError::Pool(e.to_string()))?
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
     }
 
     pub async fn query_events(&self, q: EventQuery) -> Result<EventPage, StoreError> {
@@ -440,29 +523,57 @@ impl Store {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
             let limit = q.limit.unwrap_or(100).min(1000);
             let cursor = q.cursor.unwrap_or(0);
-            let mut sql = String::from("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events WHERE seq > ?1");
-            // filters appended simply
-            if q.kind.is_some() { sql.push_str(" AND kind=?2"); }
-            // subject etc ignored for simplicity but can add
-            sql.push_str(" ORDER BY seq LIMIT ?3");
-            let mut stmt = conn.prepare(&sql)?;
-            let kind = q.kind.clone().unwrap_or_default();
-            let rows = if q.kind.is_some() {
-                stmt.query(params![cursor, kind, limit as i64])?
-            } else {
-                stmt.query(params![cursor, "", limit as i64])?
-            };
-            // above broken if no kind; handle separately
-            let _ = rows;
-            // redo simpler:
-            Ok(EventPage { events: Vec::new(), next_cursor: None })
-        }).await.map_err(|e| StoreError::Pool(e.to_string()))?
+
+            // collect from events + archive
+            let mut out = Vec::new();
+            for table in ["events", "events_archive"] {
+                let mut sql = format!(
+                    "SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM {} WHERE seq > ?1",
+                    table
+                );
+                // filters
+                let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(cursor)];
+                if let Some(k) = &q.kind {
+                    sql.push_str(" AND kind = ?");
+                    params_vec.push(Box::new(k.clone()));
+                }
+                if let Some(s) = &q.subject {
+                    sql.push_str(" AND subject = ?");
+                    params_vec.push(Box::new(s.clone()));
+                }
+                if let Some(since) = q.since {
+                    sql.push_str(" AND event_ts_ms >= ?");
+                    params_vec.push(Box::new(since));
+                }
+                if let Some(until) = q.until {
+                    sql.push_str(" AND event_ts_ms <= ?");
+                    params_vec.push(Box::new(until));
+                }
+                sql.push_str(" ORDER BY seq");
+                let mut stmt = conn.prepare(&sql)?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+                let mut rows = stmt.query(params_refs.as_slice())?;
+                while let Some(r) = rows.next()? {
+                    out.push(row_to_event(r)?);
+                }
+            }
+            out.sort_by_key(|e| e.seq.0);
+            out.dedup_by_key(|e| e.seq.0);
+            let has_more = out.len() > limit;
+            out.truncate(limit);
+            let next_cursor = if has_more { out.last().map(|e| e.seq.0) } else { None };
+            Ok(EventPage {
+                events: out,
+                next_cursor,
+            })
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
     }
 
     pub async fn health(&self) -> Result<Health, StoreError> {
         let pool = self.inner.read_pool.clone();
         let integrity_ok = self.inner.integrity_ok.load(Ordering::SeqCst);
-        let migrations = 1i64;
         tokio::task::spawn_blocking(move || -> Result<Health, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
             let journal_mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0))?;
@@ -475,6 +586,8 @@ impl Store {
             }
             let last_seq: i64 =
                 conn.query_row("SELECT COALESCE(MAX(seq),0) FROM events", [], |r| r.get(0))?;
+            let migrations: i64 =
+                conn.query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get(0))?;
             let wal_size = 0u64;
             Ok(Health {
                 journal_mode,
@@ -489,25 +602,44 @@ impl Store {
         .map_err(|e| StoreError::Pool(e.to_string()))?
     }
 
+    pub async fn overview(&self) -> Result<Overview, StoreError> {
+        let pool = self.inner.read_pool.clone();
+        tokio::task::spawn_blocking(move || -> Result<Overview, StoreError> {
+            let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+            let agents: i64 = conn.query_row("SELECT COUNT(*) FROM agents", [], |r| r.get(0))?;
+            let alerts_open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM alerts WHERE state IN ('open','acknowledged','snoozed')",
+                [],
+                |r| r.get(0),
+            )?;
+            let (req, inp): (i64, i64) = conn
+                .query_row(
+                    "SELECT COALESCE(SUM(requests),0), COALESCE(SUM(input_tokens),0) FROM usage_minute",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap_or((0, 0));
+            Ok(Overview {
+                agents,
+                alerts_open,
+                usage_requests: req,
+                usage_input_tokens: inp,
+            })
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
+    }
+
     pub async fn rebuild(&self, opts: RebuildOptions) -> Result<RebuildReport, StoreError> {
-        let start = std::time::Instant::now();
-        // count events
-        let n = self.count_events().await?;
-        // in_place_test: do nothing but report
-        match opts {
-            RebuildOptions::InPlaceTest => Ok(RebuildReport {
-                events: n,
-                duration_ms: start.elapsed().as_millis() as u64,
-            }),
-            RebuildOptions::Shadow(_path) => {
-                // create shadow db by copying? Simpler: open new store at path, migrate, reset projectors, replay not implemented fully.
-                // For tests only need report.events>0 and read model unchanged. We don't swap file to avoid breaking.
-                Ok(RebuildReport {
-                    events: n,
-                    duration_ms: start.elapsed().as_millis() as u64,
-                })
-            }
-        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.inner
+            .writer_tx
+            .send(WriteCmd::Rebuild {
+                opts,
+                reply: reply_tx,
+            })
+            .map_err(|_| StoreError::ChannelClosed)?;
+        reply_rx.await.map_err(|_| StoreError::ChannelClosed)?
     }
 
     pub async fn backup(&self, dest: &Path) -> Result<(), StoreError> {
@@ -521,13 +653,24 @@ impl Store {
             conn.execute_batch(&format!("PRAGMA busy_timeout={};", opts.busy_timeout_ms))?;
             let tmp = dest.with_file_name(format!(
                 "{}.tmp",
-                dest.file_name().unwrap().to_string_lossy()
+                dest.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "hq.db".to_string())
             ));
             let _ = std::fs::remove_file(&tmp);
-            conn.execute(&format!("VACUUM INTO '{}'", tmp.display()), [])?;
+            let mut dst = Connection::open(&tmp)?;
+            let backup = rusqlite::backup::Backup::new(&conn, &mut dst)?;
+            backup.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
+            // fsync dest file
             let f = std::fs::File::open(&tmp)?;
             f.sync_all()?;
             std::fs::rename(&tmp, &dest)?;
+            // fsync dir
+            if let Some(parent) = dest.parent()
+                && let Ok(d) = std::fs::File::open(parent)
+            {
+                let _ = d.sync_all();
+            }
             Ok(())
         })
         .await
@@ -557,8 +700,12 @@ fn row_to_event(r: &rusqlite::Row) -> Result<Event, StoreError> {
         kind,
         subject,
         source: SourceId(source),
-        correlation_id: corr.map(|s| EventId(ulid::Ulid::from_string(&s).unwrap_or_default())),
-        causation_id: caus.map(|s| EventId(ulid::Ulid::from_string(&s).unwrap_or_default())),
+        correlation_id: corr
+            .filter(|s| !s.is_empty())
+            .map(|s| EventId(ulid::Ulid::from_string(&s).unwrap_or_default())),
+        causation_id: caus
+            .filter(|s| !s.is_empty())
+            .map(|s| EventId(ulid::Ulid::from_string(&s).unwrap_or_default())),
         idempotency_key: idem,
         payload,
     };
@@ -571,7 +718,6 @@ fn row_to_event(r: &rusqlite::Row) -> Result<Event, StoreError> {
 }
 
 fn parse_kind(s: &str) -> EventKind {
-    // map snake_case back
     for k in EventKind::ALL {
         if k.as_str() == s {
             return *k;
@@ -582,16 +728,13 @@ fn parse_kind(s: &str) -> EventKind {
 
 fn parse_subject(s: &str) -> Subject {
     if s.starts_with("agent:") {
-        if s.starts_with("usage:") {
-            return Subject::Usage(UsageScope::Global);
-        }
         return Subject::Agent(AgentId(s.to_string()));
-    }
-    if s == "system" {
-        return Subject::System;
     }
     if s.starts_with("usage:") {
         return Subject::Usage(UsageScope::Global);
+    }
+    if s == "system" {
+        return Subject::System;
     }
     Subject::System
 }
@@ -600,9 +743,10 @@ fn parse_subject(s: &str) -> Subject {
 fn writer_loop(
     mut conn: Connection,
     rx: std::sync::mpsc::Receiver<WriteCmd>,
-    fail_flag: Arc<AtomicBool>,
+    _fail_flag: Arc<AtomicBool>,
     _opts: StoreOptions,
     bc: broadcast::Sender<Patch>,
+    projectors: Vec<Box<dyn projections::Projector>>,
 ) {
     while let Ok(cmd) = rx.recv() {
         match cmd {
@@ -611,13 +755,12 @@ fn writer_loop(
                 fail_after_insert,
                 reply,
             } => {
-                let res = do_append(
-                    &mut conn,
-                    drafts,
-                    fail_after_insert,
-                    fail_flag.clone(),
-                    bc.clone(),
-                );
+                let fail = fail_after_insert;
+                let res = do_append(&mut conn, drafts, fail, bc.clone(), &projectors);
+                let _ = reply.send(res);
+            }
+            WriteCmd::Rebuild { opts, reply } => {
+                let res = do_rebuild(&mut conn, &projectors, opts);
                 let _ = reply.send(res);
             }
         }
@@ -628,14 +771,16 @@ fn do_append(
     conn: &mut Connection,
     drafts: Vec<EventDraft>,
     fail_after_insert: bool,
-    _fail_flag: Arc<AtomicBool>,
     bc: broadcast::Sender<Patch>,
+    projectors: &[Box<dyn projections::Projector>],
 ) -> Result<Vec<Event>, StoreError> {
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut out_events = Vec::new();
     let mut patches: Vec<Patch> = Vec::new();
+    // We need mutable tx; wrap in scope. Use a manual transaction object.
+    // rusqlite transaction borrow; restructure: use conn.transaction then commit/rollback.
+    // Already have tx; but need pass to projectors. We'll operate on tx.
     for mut d in drafts {
-        // redact payload
         hq_core::redact_json(&mut d.payload);
         d.validate().map_err(|e| StoreError::Core(e.to_string()))?;
         // idempotency
@@ -662,8 +807,8 @@ fn do_append(
             ],
         )?;
         let seq = tx.last_insert_rowid();
+        // failpoint (test-only behavior, but available in all builds for tests)
         if fail_after_insert {
-            // simulate failure after first insert
             tx.rollback()?;
             return Err(StoreError::Validation("failpoint".into()));
         }
@@ -673,11 +818,9 @@ fn do_append(
             ingest_ts_ms,
             draft: d.clone(),
         };
-        // projectors
-        // agents
-        projections::agents::apply(&tx, &ev)?;
-        projections::usage::apply(&tx, &ev)?;
-        projections::alerts::apply(&tx, &ev)?;
+        for p in projectors {
+            p.apply(&tx, &ev)?;
+        }
         // patch
         let mut upserts = Vec::new();
         match ev.draft.kind {
@@ -685,7 +828,6 @@ fn do_append(
             | EventKind::AgentSeen
             | EventKind::AgentStatusChanged
             | EventKind::AgentDisappeared => {
-                // try read status from payload
                 let status = ev
                     .draft
                     .payload
@@ -713,9 +855,112 @@ fn do_append(
     for p in &patches {
         let _ = bc.send(p.clone());
     }
-    // Need access to broadcast sender; not available here. We'll skip broadcast? Tests require patches recv.
-    // We'll store sender globally? Instead return and broadcast from Store::append after? But patches built here.
-    // For now broadcast via a channel passed? We'll restructure: do_append returns events + patches?
-    // Simpler: broadcast inside do_append if we pass sender.
     Ok(out_events)
+}
+
+fn do_rebuild(
+    conn: &mut Connection,
+    projectors: &[Box<dyn projections::Projector>],
+    opts: RebuildOptions,
+) -> Result<RebuildReport, StoreError> {
+    let start = std::time::Instant::now();
+    // read all events ordered
+    let mut events = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events ORDER BY seq")?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            events.push(row_to_event(r)?);
+        }
+    }
+    {
+        let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events_archive ORDER BY seq")?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            events.push(row_to_event(r)?);
+        }
+    }
+    events.sort_by_key(|e| e.seq.0);
+    events.dedup_by_key(|e| e.seq.0);
+    let n = events.len();
+
+    match opts {
+        RebuildOptions::Shadow(path) => {
+            if let Some(p) = path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            // build shadow db
+            let mut shconn = Connection::open(&path)?;
+            shconn.execute_batch("PRAGMA journal_mode=WAL;")?;
+            run_migrations(&mut shconn)?;
+            // reset + replay
+            {
+                let tx = shconn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                for p in projectors {
+                    p.reset(&tx)?;
+                }
+                for ev in &events {
+                    for p in projectors {
+                        p.apply(&tx, ev)?;
+                    }
+                }
+                // checkpoint
+                let last_seq = events.last().map(|e| e.seq.0).unwrap_or(0);
+                tx.execute(
+                    "INSERT INTO projection_checkpoint (name,seq) VALUES ('all',?1) ON CONFLICT(name) DO UPDATE SET seq=excluded.seq",
+                    params![last_seq],
+                )?;
+                tx.commit()?;
+            }
+            // close shconn
+            drop(shconn);
+            // also rebuild in place on main conn
+            {
+                let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                for p in projectors {
+                    p.reset(&tx)?;
+                }
+                for ev in &events {
+                    for p in projectors {
+                        p.apply(&tx, ev)?;
+                    }
+                }
+                let last_seq = events.last().map(|e| e.seq.0).unwrap_or(0);
+                tx.execute(
+                    "INSERT INTO projection_checkpoint (name,seq) VALUES ('all',?1) ON CONFLICT(name) DO UPDATE SET seq=excluded.seq",
+                    params![last_seq],
+                )?;
+                tx.commit()?;
+            }
+            // swap file (best-effort): rename main db? Skip to avoid breaking open handle; shadow remains.
+            // fsync dir of path
+            if let Some(parent) = path.parent()
+                && let Ok(d) = std::fs::File::open(parent)
+            {
+                let _ = d.sync_all();
+            }
+        }
+        RebuildOptions::InPlaceTest => {
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            for p in projectors {
+                p.reset(&tx)?;
+            }
+            for ev in &events {
+                for p in projectors {
+                    p.apply(&tx, ev)?;
+                }
+            }
+            let last_seq = events.last().map(|e| e.seq.0).unwrap_or(0);
+            tx.execute(
+                "INSERT INTO projection_checkpoint (name,seq) VALUES ('all',?1) ON CONFLICT(name) DO UPDATE SET seq=excluded.seq",
+                params![last_seq],
+            )?;
+            tx.commit()?;
+        }
+    }
+
+    Ok(RebuildReport {
+        events: n,
+        duration_ms: start.elapsed().as_millis() as u64,
+    })
 }

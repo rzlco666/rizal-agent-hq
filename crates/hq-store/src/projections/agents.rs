@@ -45,3 +45,21 @@ fn status_to_str(s: Status) -> &'static str {
         Status::Error => "error",
     }
 }
+
+pub struct AgentProjector;
+impl crate::projections::Projector for AgentProjector {
+    fn name(&self) -> &'static str {
+        "agents"
+    }
+    fn reset(&self, tx: &rusqlite::Transaction<'_>) -> Result<(), crate::error::StoreError> {
+        tx.execute("DELETE FROM agents", [])?;
+        Ok(())
+    }
+    fn apply(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        ev: &Event,
+    ) -> Result<(), crate::error::StoreError> {
+        apply(tx, ev)
+    }
+}

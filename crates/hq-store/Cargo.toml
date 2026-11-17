@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 hq-core = { path = "../hq-core" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
 tokio = { workspace = true }
@@ -16,6 +16,7 @@ thiserror = { workspace = true }
 ulid = { workspace = true }
 tempfile = "3"
 insta = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
