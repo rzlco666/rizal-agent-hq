@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Component } from 'svelte';
+  import type { ComponentType } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
   interface Props extends HTMLButtonAttributes {
-    icon: Component;
+    icon: ComponentType;
     label: string;
     variant?: 'ghost' | 'secondary';
     size?: 'sm' | 'md';

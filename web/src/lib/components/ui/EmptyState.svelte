@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { Component } from 'svelte';
+  import type { ComponentType } from 'svelte';
   import Button from './Button.svelte';
 
   interface Props {
     title: string;
     body: string;
-    icon?: Component;
+    icon?: ComponentType;
     action?: { label: string; onclick: () => void };
   }
 

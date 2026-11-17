@@ -1,18 +1,11 @@
 <script lang="ts">
   import { Search } from 'lucide-svelte';
+  import { tick } from 'svelte';
   import { t, type TranslationKey } from '$lib/i18n';
   import { lockScroll, trapTab } from '$lib/keyboard/focus';
+  import type { PaletteAction } from '$lib/keyboard/palette';
   import Keycap from './Keycap.svelte';
 
-  export interface PaletteAction {
-    id: string;
-    label: string;
-    group: 'navigate' | 'agent' | 'alert' | 'approval' | 'view' | 'setting';
-    keywords?: string[];
-    shortcut?: string;
-    disabledReason?: string;
-    run: () => void | Promise<void>;
-  }
 
   interface Props {
     open: boolean;
@@ -27,8 +20,8 @@
   const groups = ['navigate', 'agent', 'alert', 'approval', 'view', 'setting'] as const;
   let query = $state('');
   let activeIndex = $state(0);
-  let input: HTMLInputElement;
-  let dialog: HTMLElement;
+  let input = $state<HTMLInputElement | undefined>();
+  let dialog = $state<HTMLElement | undefined>();
   let previous: HTMLElement | null = null;
   let unlock: (() => void) | null = null;
 
@@ -72,7 +65,7 @@
     activeIndex = 0;
     previous = document.activeElement as HTMLElement | null;
     unlock = lockScroll();
-    queueMicrotask(() => input?.focus());
+    void tick().then(() => input?.focus());
     return () => {
       unlock?.();
       unlock = null;
@@ -94,7 +87,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    trapTab(event, dialog);
+    if (dialog) trapTab(event, dialog);
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       move(1);
@@ -122,8 +115,8 @@
   <div class="scrim" aria-hidden="true"></div>
   <div
     class="palette"
-    bind:this={dialog}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={t('palette.title')}
     onkeydown={handleKeydown}
@@ -152,11 +145,13 @@
             <p class="group-label">{t(`palette.group.${entry.group}` as TranslationKey)}</p>
             {#each entry.items as action (action.id)}
               {@const index = flat.indexOf(action)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div
                 id={`${uid}-option-${action.id}`}
                 role="option"
+                tabindex="-1"
                 aria-selected={index === activeIndex}
-                aria-disabled={action.disabledReason || undefined}
+                aria-disabled={Boolean(action.disabledReason)}
                 class="option"
                 onclick={() => {
                   activeIndex = index;

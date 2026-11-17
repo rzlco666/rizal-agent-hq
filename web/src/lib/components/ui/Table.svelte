@@ -15,7 +15,7 @@
   interface Props {
     columns: Column[];
     rows: Record<string, unknown>[];
-    caption: string;
+    caption?: string;
     rowKey?: (row: Record<string, unknown>) => string;
     rowHref?: (row: Record<string, unknown>) => string;
     loading?: boolean;

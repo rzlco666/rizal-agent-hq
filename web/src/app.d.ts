@@ -1,5 +1,9 @@
 declare global {
-  namespace App {}
+  namespace App {
+    interface Error {
+      requestId?: string;
+    }
+  }
 
   interface Window {
     __HQ_THEME__?: 'day' | 'night' | 'system';

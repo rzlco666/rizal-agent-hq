@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { HTMLInputAttributes } from 'svelte/elements';
   import { t } from '$lib/i18n';
   import Input from './Input.svelte';
 
@@ -14,7 +15,7 @@
     readonly?: boolean;
     mono?: boolean;
     name?: string;
-    autocomplete?: string;
+    autocomplete?: HTMLInputAttributes['autocomplete'];
     oninput?: (value: string) => void;
     onblur?: () => void;
     onsubmit?: () => void;

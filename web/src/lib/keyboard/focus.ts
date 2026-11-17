@@ -9,7 +9,7 @@ const FOCUSABLE = [
 
 export function focusableElements(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (element) => element.offsetParent !== null || element === document.activeElement
+    (element) => element.getClientRects().length > 0 || element === document.activeElement
   );
 }
 

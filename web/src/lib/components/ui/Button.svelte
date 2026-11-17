@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { Component, Snippet } from 'svelte';
+  import type { ComponentType, Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
   interface Props extends HTMLButtonAttributes {
     variant?: 'primary' | 'secondary' | 'ghost' | 'destructive';
     size?: 'sm' | 'md' | 'lg';
     loading?: boolean;
-    icon?: Component;
-    iconAfter?: Component;
+    icon?: ComponentType;
+    iconAfter?: ComponentType;
     children?: Snippet;
   }
 

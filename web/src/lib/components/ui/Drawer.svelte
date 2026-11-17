@@ -17,7 +17,7 @@
   let { open, title, onclose, footer, children, side = 'right' }: Props = $props();
 
   const uid = $props.id();
-  let panel: HTMLElement;
+  let panel = $state<HTMLElement | undefined>();
   let previous: HTMLElement | null = null;
   let unlock: (() => void) | null = null;
 
@@ -36,7 +36,7 @@
   });
 
   function handleKeydown(event: KeyboardEvent) {
-    trapTab(event, panel);
+    if (panel) trapTab(event, panel);
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -47,7 +47,7 @@
 
 {#if open}
   <div class="scrim" aria-hidden="true"></div>
-  <section
+  <div tabindex="-1"
     class="drawer"
     data-side={side}
     bind:this={panel}
@@ -65,7 +65,7 @@
     </header>
     <div class="content">{@render children()}</div>
     {#if footer}<footer>{@render footer()}</footer>{/if}
-  </section>
+  </div>
 {/if}
 
 <style>

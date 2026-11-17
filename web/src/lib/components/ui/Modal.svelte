@@ -33,7 +33,7 @@
   }: Props = $props();
 
   const uid = $props.id();
-  let dialog: HTMLElement;
+  let dialog = $state<HTMLElement | undefined>();
   let previous: HTMLElement | null = null;
   let unlock: (() => void) | null = null;
 
@@ -56,7 +56,7 @@
   });
 
   function handleKeydown(event: KeyboardEvent) {
-    trapTab(event, dialog);
+    if (dialog) trapTab(event, dialog);
     if (event.key === 'Escape' && !busy) {
       event.preventDefault();
       event.stopPropagation();
@@ -70,8 +70,8 @@
   <div
     class="modal"
     data-size={size}
-    bind:this={dialog}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-labelledby={`${uid}-title`}
     aria-describedby={description ? `${uid}-description` : undefined}
