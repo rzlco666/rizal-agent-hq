@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -15,16 +13,14 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust · fmt / clippy / test / build
+    name: Rust · fmt / clippy / test / deny
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Install toolchain from rust-toolchain.toml
+        uses: dtolnay/rust-toolchain@master
 
       - name: Cache cargo registry & target
         uses: Swatinem/rust-cache@v2
@@ -38,26 +34,23 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
-      - name: Build release binary
-        run: cargo build --workspace --release
+      - name: Build workspace
+        run: cargo build --workspace
 
-  web:
-    name: Web · JS syntax check
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Check dependencies
+        run: cargo deny check
+
+  parity:
+    name: Parity · frozen v2 fixtures
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 20
-
-      - name: Syntax-check ES modules
-        run: |
-          for f in web/app.js web/office3d.js; do
-            tmp="/tmp/$(basename "$f" .js).mjs"
-            cp "$f" "$tmp"
-            node --check "$tmp"
-            echo "OK $f"
-          done
+      - name: Verify oracle checksums and fixture counts
+        run: bash tools/parity/verify.sh
