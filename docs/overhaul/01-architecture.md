@@ -32,7 +32,7 @@ Aturan dependensi (ditegakkan review, bukan hanya konvensi):
 |---|---|---|
 | `hq-core` | serde, ulid, thiserror, schemars | tokio, rusqlite, axum, reqwest |
 | `hq-store` | core, rusqlite, tokio (channel), tracing | axum, reqwest |
-| `hq-connectors` | core, reqwest, tokio, jsonschema | store, api, rusqlite |
+| `hq-connectors` | core, reqwest, tokio, jsonschema, rusqlite (read-only, S09) | store, api |
 | `hq-control` | core, tokio, tracing | store langsung (audit lewat trait), api |
 | `hq-alerts` | core, tokio | store langsung, reqwest |
 | `hq-humanize` | core | I/O apa pun |
@@ -41,6 +41,10 @@ Aturan dependensi (ditegakkan review, bukan hanya konvensi):
 | `hq-mcp` | core, rmcp, tokio | store langsung |
 | `hq-api` | core, store, connectors, control, alerts, humanize, knowledge, observe | rusqlite langsung |
 | `hq-server` | semua | logika domain baru |
+
+S09: `hq-connectors` boleh memakai `rusqlite` hanya untuk adapter pembaca
+(OMP `stats.db`): URI `mode=ro`, `query_only=ON`, `busy_timeout=2000`. Adapter
+tetap mengembalikan `EventDraft`; penulisan event tetap melalui `hq-store`.
 
 `hq-server` hanya wiring: baca config, buka store, daftarkan connector, jalankan
 supervisor, pasang router. Tidak ada aturan bisnis di sini.

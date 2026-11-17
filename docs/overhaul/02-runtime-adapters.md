@@ -26,9 +26,12 @@ dengan connector lain. Adapter tidak menulis ke store dan tidak memanggil API.
 | `crates/hq-connectors/src/native/local.rs` | `LocalConnector: Connector`, orkestrasi + normalisasi |
 | `crates/hq-connectors/tests/runtime_*.rs` | tes kontrak dan tes per adapter |
 
-`hq-connectors` tidak boleh bergantung pada `hq-store`, `hq-api`, atau
-`rusqlite` (01 §1). Karena itu adapter mengembalikan fakta, bukan baris DB.
-`LocalConnector` adalah satu-satunya tempat fakta menjadi `EventDraft`.
+`hq-connectors` tidak boleh bergantung pada `hq-store` atau `hq-api`, dan
+tidak menulis database apa pun. Pengecualian S09 (lihat 01 §1): `rusqlite`
+dipakai hanya untuk pembacaan `~/.omp/stats.db` dengan `mode=ro`,
+`query_only=ON`, dan `busy_timeout=2000`. Adapter tetap mengembalikan fakta
+atau `EventDraft`, bukan baris DB mentah; `LocalConnector` tetap menjadi satu-
+satunya tempat fakta menjadi event untuk umpan balik ke projector.
 
 ### 1.2 Signature trait
 

@@ -885,9 +885,11 @@ version = "3.0.0"
 dependencies = [
  "async-trait",
  "hq-core",
+ "rusqlite",
  "serde",
  "serde_json",
  "sysinfo",
+ "tempfile",
  "tokio",
 ]
 
