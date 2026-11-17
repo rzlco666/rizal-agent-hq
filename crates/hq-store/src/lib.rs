@@ -112,12 +112,13 @@ pub struct PatchRef {
 }
 #[derive(Debug, Clone)]
 pub enum PatchEntity {
-    Agent(AgentCard),
-    Task(String, serde_json::Value),
-    Alert(String, serde_json::Value),
-    Usage(String, serde_json::Value),
-    Connector(String, serde_json::Value),
-    Approval(String, serde_json::Value),
+    Agent(String, EventKind, serde_json::Value),
+    Task(String, EventKind, serde_json::Value),
+    Log(String, EventKind, serde_json::Value),
+    Alert(String, EventKind, serde_json::Value),
+    Usage(String, EventKind, serde_json::Value),
+    Connector(String, EventKind, serde_json::Value),
+    Approval(String, EventKind, serde_json::Value),
 }
 #[derive(Debug, Clone)]
 pub struct Patch {
@@ -128,74 +129,52 @@ pub struct Patch {
 
 pub fn patch_for_event(ev: &Event) -> Patch {
     use hq_core::EventKind;
-    let mut upserts = Vec::new();
-    match ev.draft.kind {
-        EventKind::AgentDisappeared => {
-            upserts.push(PatchEntity::Agent(AgentCard {
-                id: ev.draft.subject.key(),
-                name: agent_name(&ev.draft.subject.key()),
-                status: Status::Offline,
-            }));
-        }
-        EventKind::AgentObserved | EventKind::AgentSeen | EventKind::AgentStatusChanged => {
-            let status = ev
-                .draft
-                .payload
-                .get("status")
-                .and_then(|v| v.as_str())
-                .map(status_from_str)
-                .unwrap_or(Status::Bekerja);
-            upserts.push(PatchEntity::Agent(AgentCard {
-                id: ev.draft.subject.key(),
-                name: agent_name(&ev.draft.subject.key()),
-                status,
-            }));
-        }
-        EventKind::SessionStarted
-        | EventKind::SessionUpdated
-        | EventKind::SessionEnded
-        | EventKind::LogRecorded => {
-            let mut payload = ev.draft.payload.clone();
-            hq_core::redact_json(&mut payload);
-            upserts.push(PatchEntity::Task(ev.draft.subject.key(), payload));
-        }
+
+    let id = match &ev.draft.subject {
+        Subject::Usage(UsageScope::Session(session)) => session.0.clone(),
+        subject => subject.key(),
+    };
+    let entity_type = match ev.draft.kind {
+        EventKind::AgentObserved
+        | EventKind::AgentSeen
+        | EventKind::AgentStatusChanged
+        | EventKind::AgentDisappeared => "agent",
+        EventKind::SessionStarted | EventKind::SessionUpdated | EventKind::SessionEnded => "task",
+        EventKind::LogRecorded => "log",
         EventKind::AlertRaised
         | EventKind::AlertUpdated
         | EventKind::AlertAcknowledged
         | EventKind::AlertSnoozed
-        | EventKind::AlertResolved => {
-            upserts.push(PatchEntity::Alert(
-                ev.draft.subject.key(),
-                ev.draft.payload.clone(),
-            ));
-        }
-        EventKind::UsageRecorded | EventKind::QuotaObserved | EventKind::CostEstimated => {
-            upserts.push(PatchEntity::Usage(
-                ev.draft.subject.key(),
-                ev.draft.payload.clone(),
-            ));
-        }
+        | EventKind::AlertResolved => "alert",
+        EventKind::UsageRecorded | EventKind::QuotaObserved | EventKind::CostEstimated => "usage",
         EventKind::ConnectorRegistered
         | EventKind::ConnectorHealthChanged
         | EventKind::ConnectorPollCompleted
         | EventKind::ConnectorAuthFailed
-        | EventKind::ConnectorEvent => {
-            upserts.push(PatchEntity::Connector(
-                ev.draft.subject.key(),
-                ev.draft.payload.clone(),
-            ));
-        }
+        | EventKind::ConnectorEvent => "connector",
         EventKind::ActionRequested
         | EventKind::ActionApproved
         | EventKind::ActionDenied
         | EventKind::ActionExecuted
-        | EventKind::ActionFailed => {
-            upserts.push(PatchEntity::Approval(
-                ev.draft.subject.key(),
-                ev.draft.payload.clone(),
-            ));
-        }
-        _ => {}
+        | EventKind::ActionFailed => "approval",
+        _ => "",
+    };
+
+    let mut upserts = Vec::new();
+    if !entity_type.is_empty() {
+        let mut payload = ev.draft.payload.clone();
+        hq_core::redact_json(&mut payload);
+        let delta = match entity_type {
+            "agent" => PatchEntity::Agent(id, ev.draft.kind, payload),
+            "task" => PatchEntity::Task(id, ev.draft.kind, payload),
+            "log" => PatchEntity::Log(id, ev.draft.kind, payload),
+            "alert" => PatchEntity::Alert(id, ev.draft.kind, payload),
+            "usage" => PatchEntity::Usage(id, ev.draft.kind, payload),
+            "connector" => PatchEntity::Connector(id, ev.draft.kind, payload),
+            "approval" => PatchEntity::Approval(id, ev.draft.kind, payload),
+            _ => unreachable!(),
+        };
+        upserts.push(delta);
     }
     Patch {
         seq: ev.seq,
@@ -822,7 +801,7 @@ fn row_to_event(r: &rusqlite::Row) -> Result<Event, StoreError> {
     let idem: Option<String> = r.get(10)?;
     let payload_str: String = r.get(11)?;
     let kind = parse_kind(&kind_str);
-    let subject = parse_subject(&subject_str);
+    let subject = parse_subject(&subject_str, kind);
     let payload: serde_json::Value =
         serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
     let draft = EventDraft {
@@ -856,12 +835,46 @@ fn parse_kind(s: &str) -> EventKind {
     EventKind::SystemHealthObserved
 }
 
-fn parse_subject(s: &str) -> Subject {
+fn parse_subject(s: &str, kind: EventKind) -> Subject {
+    use EventKind::*;
+    if let Some(session_id) = s.strip_prefix("usage:session:") {
+        if let Ok(session) = SessionId::parse(session_id) {
+            return Subject::Usage(UsageScope::Session(session));
+        }
+        return Subject::Usage(UsageScope::Global);
+    }
+    if let Some(agent_id) = s.strip_prefix("usage:agent:") {
+        return Subject::Usage(UsageScope::Agent(AgentId(format!("agent:{agent_id}"))));
+    }
+    if s == "usage:global" || s.starts_with("usage:") {
+        return Subject::Usage(UsageScope::Global);
+    }
+    match kind {
+        SessionStarted | SessionUpdated | SessionEnded => {
+            return Subject::Session(SessionId(s.to_string()));
+        }
+        LogRecorded if SessionId::parse(s).is_ok() => {
+            return Subject::Session(SessionId(s.to_string()));
+        }
+        AlertRaised | AlertUpdated | AlertAcknowledged | AlertSnoozed | AlertResolved => {
+            return Subject::Alert(AlertId(s.to_string()));
+        }
+        ConnectorRegistered
+        | ConnectorHealthChanged
+        | ConnectorPollCompleted
+        | ConnectorAuthFailed
+        | ConnectorEvent => return Subject::Connector(ConnectorId(s.to_string())),
+        ActionRequested | ActionApproved | ActionDenied | ActionExecuted | ActionFailed => {
+            return Subject::Action(ActionId(s.to_string()));
+        }
+        DeviceAdded | DeviceRevoked => return Subject::Device(DeviceId(s.to_string())),
+        KnowledgePageSynced | KnowledgePageQuarantined | KnowledgePromoted => {
+            return Subject::Knowledge(s.strip_prefix("knowledge:").unwrap_or(s).to_string());
+        }
+        _ => {}
+    }
     if s.starts_with("agent:") {
         return Subject::Agent(AgentId(s.to_string()));
-    }
-    if s.starts_with("usage:") {
-        return Subject::Usage(UsageScope::Global);
     }
     if s == "system" {
         return Subject::System;

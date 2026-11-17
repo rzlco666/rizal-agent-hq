@@ -170,6 +170,10 @@ async fn sse_entity_upserts_include_type_and_redacted_payload() {
     .await;
     assert!(response.contains("\"type\":\"alert\""), "{response}");
     assert!(
+        response.contains("\"event_kind\":\"alert_raised\""),
+        "{response}"
+    );
+    assert!(
         response.contains("\"payload\":{\"message\":\"needs review\"}"),
         "{response}"
     );

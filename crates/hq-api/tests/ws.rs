@@ -84,7 +84,7 @@ async fn stale_since_asks_for_snapshot() {
 }
 
 #[tokio::test]
-async fn ws_agent_disappeared_is_offline() {
+async fn ws_agent_disappeared_is_an_event_delta() {
     let (addr, ing, _dir) = spawn_test_api().await;
     let mut draft = agent_observed("agent:omp", "bekerja");
     draft.kind = EventKind::AgentDisappeared;
@@ -96,7 +96,8 @@ async fn ws_agent_disappeared_is_offline() {
     assert_eq!(next_json(&mut ws).await["type"], "hello");
     let patch = next_json(&mut ws).await;
     assert_eq!(patch["upserts"][0]["type"], "agent");
-    assert_eq!(patch["upserts"][0]["status"], "offline");
+    assert_eq!(patch["upserts"][0]["event_kind"], "agent_disappeared");
+    assert_eq!(patch["upserts"][0]["payload"]["disappeared_at_ms"], 1000);
 }
 
 #[tokio::test]
@@ -122,10 +123,104 @@ async fn ws_alert_and_usage_upserts_include_type_and_payload() {
     assert_eq!(next_json(&mut ws).await["type"], "hello");
     let alert = next_json(&mut ws).await["upserts"][0].clone();
     assert_eq!(alert["type"], "alert");
+    assert_eq!(alert["event_kind"], "alert_raised");
     assert_eq!(alert["payload"]["message"], "needs review");
     let usage = next_json(&mut ws).await["upserts"][0].clone();
     assert_eq!(usage["type"], "usage");
+    assert_eq!(usage["event_kind"], "usage_recorded");
     assert_eq!(usage["payload"]["tokens"], 42);
+}
+
+#[tokio::test]
+async fn ws_session_delta_targets_stable_session_subject() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.ingest(vec![draft(
+        EventKind::SessionUpdated,
+        Subject::Session(SessionId("agent:omp/session/stable-1".to_string())),
+        serde_json::json!({"updated_at_ms":1000}),
+    )])
+    .await
+    .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let delta = next_json(&mut ws).await["upserts"][0].clone();
+    assert_eq!(delta["type"], "task");
+    assert_eq!(delta["id"], "agent:omp/session/stable-1");
+    assert_eq!(delta["event_kind"], "session_updated");
+}
+
+#[tokio::test]
+async fn ws_session_usage_delta_targets_session_subject() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.ingest(vec![draft(
+        EventKind::UsageRecorded,
+        Subject::Usage(UsageScope::Session(SessionId(
+            "agent:omp/session/stable-2".to_string(),
+        ))),
+        serde_json::json!({"tokens":42}),
+    )])
+    .await
+    .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let delta = next_json(&mut ws).await["upserts"][0].clone();
+    assert_eq!(delta["type"], "usage");
+    assert_eq!(delta["id"], "agent:omp/session/stable-2");
+}
+
+#[tokio::test]
+async fn ws_agent_log_is_a_redacted_log_delta_not_a_task() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.ingest(vec![draft(
+        EventKind::LogRecorded,
+        Subject::Agent(AgentId("agent:omp".to_string())),
+        serde_json::json!({"message":"token ghp_abcdefghijklmnop"}),
+    )])
+    .await
+    .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let patch = next_json(&mut ws).await;
+    let delta = &patch["upserts"][0];
+    assert_eq!(delta["type"], "log");
+    assert_eq!(delta["id"], "agent:omp");
+    assert_eq!(delta["event_kind"], "log_recorded");
+    assert!(!patch.to_string().contains("ghp_abcdefghijklmnop"));
+}
+
+#[tokio::test]
+async fn ws_alert_lifecycle_deltas_keep_event_kind() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    let target = Subject::Alert(AlertId("alert-lifecycle".to_string()));
+    ing.ingest(vec![
+        draft(
+            EventKind::AlertAcknowledged,
+            target.clone(),
+            serde_json::json!({"at_ms":1000}),
+        ),
+        draft(
+            EventKind::AlertResolved,
+            target,
+            serde_json::json!({"at_ms":2000}),
+        ),
+    ])
+    .await
+    .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let acknowledged = next_json(&mut ws).await["upserts"][0].clone();
+    let resolved = next_json(&mut ws).await["upserts"][0].clone();
+    assert_eq!(acknowledged["id"], "alert-lifecycle");
+    assert_eq!(acknowledged["event_kind"], "alert_acknowledged");
+    assert_eq!(resolved["event_kind"], "alert_resolved");
 }
 
 fn draft(kind: EventKind, subject: Subject, payload: serde_json::Value) -> EventDraft {

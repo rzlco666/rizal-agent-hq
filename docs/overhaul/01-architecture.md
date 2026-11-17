@@ -468,17 +468,20 @@ transaksi, dan diverifikasi checksum-nya.
 ```rust
 pub struct Patch {
     pub seq: Seq,
-    pub upserts: Vec<PatchEntity>, // agent | task | alert | usage | connector | approval
+    pub upserts: Vec<PatchEntity>, // tagged event deltas: agent | task | log | alert | usage | connector | approval
     pub deletes: Vec<PatchRef>,
 }
 ```
 
-`PatchEntity` adalah enum bertag yang berisi bentuk API (`AgentCard`, `TaskView`,
-`AlertView`, …) plus payload teredaksi. Representasi wire selalu menyertakan
-field `type` (agent/task/alert/usage/connector/approval) dan data entity yang
-cukup untuk menerapkan patch. Patch dibangun dari event yang baru di-append,
-bukan dari perbedaan tabel. Klien menerapkan patch setelah snapshot `seq`; jika
-`seq` melompat, klien meminta snapshot penuh.
+Setiap upsert adalah delta event, bukan `AgentCard`, `TaskView`, atau proyeksi
+lengkap. Wire menyertakan `type`, `id` target stabil, `event_kind`, dan `payload`
+yang sudah teredaksi, misalnya `{"type":"log","id":"agent:omp","event_kind":"log_recorded","payload":{...}}`.
+`task` hanya menandai delta `session.*`; targetnya adalah subject sesi kanonis,
+bukan ID task yang direka. `log.recorded` memakai `type: "log"` dan subject
+aslinya, termasuk agent-only log. Event usage berscope sesi juga mempertahankan
+ID subject sesi stabil. Patch dibangun dari event yang baru di-append, bukan
+dari perbedaan tabel. Klien menerapkan patch setelah snapshot `seq`; jika `seq`
+melompat, klien meminta snapshot penuh.
 
 ## 5. API v1
 

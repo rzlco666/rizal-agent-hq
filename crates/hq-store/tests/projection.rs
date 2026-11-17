@@ -43,7 +43,11 @@ async fn patches_are_emitted_after_commit() {
         .await
         .unwrap();
     let p = rx.recv().await.unwrap();
-    assert!(p.upserts.iter().any(|u| matches!(u, PatchEntity::Agent(_))));
+    assert!(
+        p.upserts
+            .iter()
+            .any(|u| matches!(u, PatchEntity::Agent(_, _, _)))
+    );
 }
 
 #[tokio::test]

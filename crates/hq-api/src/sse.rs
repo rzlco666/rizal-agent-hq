@@ -180,26 +180,26 @@ fn sse_patch_json(patch: &Patch) -> serde_json::Value {
         .upserts
         .iter()
         .map(|u| match u {
-            hq_store::PatchEntity::Agent(c) => serde_json::json!({
-                "type": "agent",
-                "id": c.id,
-                "name": c.name,
-                "status": serde_json::to_value(c.status).unwrap_or_default(),
-            }),
-            hq_store::PatchEntity::Alert(id, payload) => {
-                serde_json::json!({"type":"alert","id": id, "payload": payload})
+            hq_store::PatchEntity::Agent(id, event_kind, payload) => {
+                serde_json::json!({"type":"agent","id":id,"event_kind":event_kind.as_str(),"payload":payload})
             }
-            hq_store::PatchEntity::Usage(id, payload) => {
-                serde_json::json!({"type":"usage","id": id, "payload": payload})
+            hq_store::PatchEntity::Alert(id, event_kind, payload) => {
+                serde_json::json!({"type":"alert","id":id,"event_kind":event_kind.as_str(),"payload":payload})
             }
-            hq_store::PatchEntity::Connector(id, payload) => {
-                serde_json::json!({"type":"connector","id": id, "payload": payload})
+            hq_store::PatchEntity::Usage(id, event_kind, payload) => {
+                serde_json::json!({"type":"usage","id":id,"event_kind":event_kind.as_str(),"payload":payload})
             }
-            hq_store::PatchEntity::Approval(id, payload) => {
-                serde_json::json!({"type":"approval","id": id, "payload": payload})
+            hq_store::PatchEntity::Connector(id, event_kind, payload) => {
+                serde_json::json!({"type":"connector","id":id,"event_kind":event_kind.as_str(),"payload":payload})
             }
-            hq_store::PatchEntity::Task(id, payload) => {
-                serde_json::json!({"type":"task","id": id, "payload": payload})
+            hq_store::PatchEntity::Approval(id, event_kind, payload) => {
+                serde_json::json!({"type":"approval","id":id,"event_kind":event_kind.as_str(),"payload":payload})
+            }
+            hq_store::PatchEntity::Task(id, event_kind, payload) => {
+                serde_json::json!({"type":"task","id":id,"event_kind":event_kind.as_str(),"payload":payload})
+            }
+            hq_store::PatchEntity::Log(id, event_kind, payload) => {
+                serde_json::json!({"type":"log","id":id,"event_kind":event_kind.as_str(),"payload":payload})
             }
         })
         .collect();

@@ -71,7 +71,7 @@ fn ring_rejects_internal_sequence_hole() {
 }
 
 #[tokio::test]
-async fn session_and_log_events_produce_redacted_task_patches() {
+async fn session_and_log_events_produce_tagged_redacted_deltas() {
     let (store, _dir) = test_store().await;
     let session_id = "agent:omp/session/s1";
     let events = [
@@ -112,15 +112,24 @@ async fn session_and_log_events_produce_redacted_task_patches() {
         }
         let patch = patch_for_event(&event);
         assert_eq!(patch.upserts.len(), 1, "{:?}", event.draft.kind);
-        match &patch.upserts[0] {
-            PatchEntity::Task(id, payload) => {
-                assert_eq!(id, session_id);
-                assert!(!payload.to_string().contains("ghp_"));
-                if event.draft.kind != EventKind::LogRecorded {
-                    assert_eq!(payload, &event.draft.payload);
-                }
+        let (id, event_kind, payload) = match &patch.upserts[0] {
+            PatchEntity::Task(id, event_kind, payload)
+                if event.draft.kind != EventKind::LogRecorded =>
+            {
+                (id, event_kind, payload)
             }
-            other => panic!("expected task upsert, got {other:?}"),
+            PatchEntity::Log(id, event_kind, payload)
+                if event.draft.kind == EventKind::LogRecorded =>
+            {
+                (id, event_kind, payload)
+            }
+            other => panic!("expected event-specific delta, got {other:?}"),
+        };
+        assert_eq!(id, session_id);
+        assert_eq!(event_kind, &event.draft.kind);
+        assert!(!payload.to_string().contains("ghp_"));
+        if event.draft.kind != EventKind::LogRecorded {
+            assert_eq!(payload, &event.draft.payload);
         }
     }
 }

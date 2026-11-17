@@ -178,38 +178,56 @@ fn patch_to_json(patch: &Patch) -> serde_json::Value {
         .upserts
         .iter()
         .map(|u| match u {
-            PatchEntity::Agent(c) => json!({
+            PatchEntity::Agent(id, event_kind, payload) => json!({
                 "type": "agent",
-                "id": c.id,
-                "name": c.name,
-                "status": serde_json::to_value(c.status).unwrap_or_default(),
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload,
             }),
-            PatchEntity::Alert(id, payload) => json!({"type":"alert","id": id, "payload": payload}),
-            PatchEntity::Usage(id, payload) => json!({"type":"usage","id": id, "payload": payload}),
-            PatchEntity::Connector(id, payload) => {
-                json!({"type":"connector","id": id, "payload": payload})
-            }
-            PatchEntity::Approval(id, payload) => {
-                json!({"type":"approval","id": id, "payload": payload})
-            }
-            PatchEntity::Task(id, payload) => json!({"type":"task","id": id, "payload": payload}),
+            PatchEntity::Alert(id, event_kind, payload) => json!({
+                "type":"alert",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
+            PatchEntity::Usage(id, event_kind, payload) => json!({
+                "type":"usage",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
+            PatchEntity::Connector(id, event_kind, payload) => json!({
+                "type":"connector",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
+            PatchEntity::Approval(id, event_kind, payload) => json!({
+                "type":"approval",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
+            PatchEntity::Task(id, event_kind, payload) => json!({
+                "type":"task",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
+            PatchEntity::Log(id, event_kind, payload) => json!({
+                "type":"log",
+                "id": id,
+                "event_kind": event_kind.as_str(),
+                "payload": payload
+            }),
         })
         .collect();
-    // include type? Hidden tests may check upserts nonempty. Keep minimal with id/status.
     json!({
         "type":"patch",
         "seq":patch.seq.0,
         "upserts": upserts,
         "deletes": patch.deletes.iter().map(|d| json!({"kind":d.kind,"id":d.id})).collect::<Vec<_>>(),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn replay_watermark_includes_contiguous_events_after_captured_watermark() {
-        assert_eq!(super::replay_watermark(10, 12, [11, 12, 13]), Some(13));
-    }
 }
 
 async fn send_snapshot_required(
@@ -226,4 +244,11 @@ async fn send_snapshot_required(
                 .into(),
         ))
         .await;
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn replay_watermark_includes_contiguous_events_after_captured_watermark() {
+        assert_eq!(super::replay_watermark(10, 12, [11, 12, 13]), Some(13));
+    }
 }
