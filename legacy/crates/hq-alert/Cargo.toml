@@ -1,0 +1,9 @@
+[package]
+name = "hq-alert"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hq-core = { path = "../hq-core" }
+serde.workspace = true

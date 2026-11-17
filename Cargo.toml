@@ -1,16 +1,25 @@
 [workspace]
-resolver = "2"
-members = ["crates/hq-core", "crates/hq-collect", "crates/hq-alert", "crates/hq-server"]
+resolver = "3"
+members = [
+  "crates/hq-core", "crates/hq-store", "crates/hq-connectors",
+  "crates/hq-control", "crates/hq-alerts", "crates/hq-humanize", "crates/hq-knowledge",
+  "crates/hq-observe", "crates/hq-mcp", "crates/hq-api", "crates/hq-server",
+]
+exclude = ["legacy"]
 
 [workspace.package]
-version = "2.0.0"
-edition = "2021"
+version = "3.0.0"
+edition = "2024"
 license = "MIT"
+rust-version = "1.96"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+thiserror = "2"
+tracing = "0.1"
+ulid = { version = "1", features = ["serde"] }
 
 [profile.release]
 opt-level = 3
