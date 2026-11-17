@@ -5,3 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = "0.1"
+hq-core = { path = "../hq-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sysinfo = "0.33"
+tokio = { workspace = true }

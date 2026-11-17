@@ -1,0 +1,5 @@
+  101     1  0.1  0.2       00:01 omp omp --model local
+  102     1  0.0  0.1       00:02 cursor cursor --profile work
+  103   101  0.2  0.3       00:03 node node /opt/mcp-server/index.js --name files
+  104   101  0.0  0.1       00:04 node node service --header 'Authorization: Bearer synthetic-token.value.signature'
+  105     1  0.0  0.0       00:05 sleep sleep 5
