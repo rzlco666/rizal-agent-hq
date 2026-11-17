@@ -43,7 +43,10 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
     let mut rx = store.patches();
 
     let last_seq = store.last_seq().await.map(|s| s.0).unwrap_or(0);
-    let missed = store.read_since(hq_core::Seq(since), 1001).await.unwrap_or_default();
+    let missed = store
+        .read_since(hq_core::Seq(since), 1001)
+        .await
+        .unwrap_or_default();
 
     // gap / backlog detection
     let mut snapshot = false;
@@ -62,7 +65,9 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
     if snapshot {
         let _ = sender
             .send(axum::extract::ws::Message::Text(
-                json!({"type":"snapshot_required","seq":last_seq}).to_string().into(),
+                json!({"type":"snapshot_required","seq":last_seq})
+                    .to_string()
+                    .into(),
             ))
             .await;
         let _ = sender.close().await;

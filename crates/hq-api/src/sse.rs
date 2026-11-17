@@ -28,12 +28,16 @@ pub async fn sse_handler(
     let mut cursor = q.since.unwrap_or(0);
     if let Some(v) = headers.get("last-event-id")
         && let Ok(s) = v.to_str()
-        && let Ok(n) = s.parse::<i64>() {
-            cursor = n;
-        }
+        && let Ok(n) = s.parse::<i64>()
+    {
+        cursor = n;
+    }
 
     // initial replay
-    let replay = store.read_since(hq_core::Seq(cursor), 1001).await.unwrap_or_default();
+    let replay = store
+        .read_since(hq_core::Seq(cursor), 1001)
+        .await
+        .unwrap_or_default();
     let rx = store.patches();
     // If backlog truncated, still send what we have; client may request snapshot via WS. SSE keeps streaming.
 
@@ -53,7 +57,10 @@ pub async fn sse_handler(
                 Ok(patch) => {
                     if patch.seq.0 <= last {
                         // skip duplicate
-                        return Some((Ok(Event::default().comment("skip")), (Vec::new(), rx, ring, store, last)));
+                        return Some((
+                            Ok(Event::default().comment("skip")),
+                            (Vec::new(), rx, ring, store, last),
+                        ));
                     }
                     let data = serde_json::to_string(&sse_patch_json(&patch)).unwrap_or_default();
                     let e = Event::default().id(patch.seq.0.to_string()).data(data);
@@ -68,22 +75,30 @@ pub async fn sse_handler(
         },
     );
 
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("heartbeat"))
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("heartbeat"),
+    )
 }
 
 fn sse_patch_json(patch: &Patch) -> serde_json::Value {
-    let upserts: Vec<serde_json::Value> = patch.upserts.iter().map(|u| match u {
-        hq_store::PatchEntity::Agent(c) => serde_json::json!({
-            "id": c.id,
-            "name": c.name,
-            "status": serde_json::to_value(c.status).unwrap_or_default(),
-        }),
-        hq_store::PatchEntity::Alert(id) => serde_json::json!({"id": id}),
-        hq_store::PatchEntity::Usage(id) => serde_json::json!({"id": id}),
-        hq_store::PatchEntity::Connector(id) => serde_json::json!({"id": id}),
-        hq_store::PatchEntity::Approval(id) => serde_json::json!({"id": id}),
-        hq_store::PatchEntity::Task(id) => serde_json::json!({"id": id}),
-    }).collect();
+    let upserts: Vec<serde_json::Value> = patch
+        .upserts
+        .iter()
+        .map(|u| match u {
+            hq_store::PatchEntity::Agent(c) => serde_json::json!({
+                "id": c.id,
+                "name": c.name,
+                "status": serde_json::to_value(c.status).unwrap_or_default(),
+            }),
+            hq_store::PatchEntity::Alert(id) => serde_json::json!({"id": id}),
+            hq_store::PatchEntity::Usage(id) => serde_json::json!({"id": id}),
+            hq_store::PatchEntity::Connector(id) => serde_json::json!({"id": id}),
+            hq_store::PatchEntity::Approval(id) => serde_json::json!({"id": id}),
+            hq_store::PatchEntity::Task(id) => serde_json::json!({"id": id}),
+        })
+        .collect();
     serde_json::json!({
         "seq": patch.seq.0,
         "upserts": upserts,
