@@ -124,6 +124,14 @@ pub struct LogEntry {
     pub text: String,
 }
 
+/// Read filters applied before a log page is truncated.
+#[derive(Debug, Default, Clone)]
+pub struct LogFilter {
+    pub level: Option<String>,
+    pub q: Option<String>,
+    pub before: Option<i64>,
+}
+
 // ---------- Patch ----------
 #[derive(Debug, Clone)]
 pub struct PatchRef {
@@ -440,22 +448,31 @@ impl Store {
         reply_rx.await.map_err(|_| StoreError::ChannelClosed)?
     }
 
-    /// Render stored sentence key plus params in the caller's locale.
+    /// Render stored sentences in the caller's locale, applying filters before
+    /// the page is truncated so a full page of matching logs is returned.
     pub async fn logs(
         &self,
         agent: &AgentId,
         locale: Locale,
         limit: usize,
+        filter: LogFilter,
     ) -> Result<Vec<LogEntry>, StoreError> {
         let pool = self.inner.read_pool.clone();
         let agent = agent.0.clone();
         tokio::task::spawn_blocking(move || -> Result<Vec<LogEntry>, StoreError> {
+            if limit == 0 {
+                return Ok(Vec::new());
+            }
+            let LogFilter { level, q, before } = filter;
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
             let mut stmt = conn.prepare(
                 "SELECT id, ts_ms, level, sentence_json FROM logs
-                 WHERE agent_id=?1 ORDER BY ts_ms DESC, id DESC LIMIT ?2",
+                 WHERE agent_id=?1
+                   AND (?2 IS NULL OR level = ?2)
+                   AND (?3 IS NULL OR ts_ms < ?3)
+                 ORDER BY ts_ms DESC, id DESC",
             )?;
-            let rows = stmt.query_map(params![agent, limit as i64], |r| {
+            let rows = stmt.query_map(params![agent, level, before], |r| {
                 let id: String = r.get(0)?;
                 let ts_ms: i64 = r.get(1)?;
                 let level: String = r.get(2)?;
@@ -476,7 +493,16 @@ impl Store {
             })?;
             let mut out = Vec::new();
             for row in rows {
-                out.push(row?);
+                let entry = row?;
+                if q.as_deref()
+                    .is_some_and(|needle| !entry.text.contains(needle))
+                {
+                    continue;
+                }
+                out.push(entry);
+                if out.len() >= limit {
+                    break;
+                }
             }
             Ok(out)
         })

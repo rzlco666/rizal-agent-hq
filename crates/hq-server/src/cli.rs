@@ -28,6 +28,52 @@ pub async fn run(args: &[String]) -> i32 {
     }
 }
 
+/// Non-WebSocket/SSE v1 routes from 01-architecture §5 implemented by S06,
+/// plus both health endpoints. WS, SSE and other legacy routes are exempt.
+const EXPECTED_OPENAPI_PATHS: &[&str] = &[
+    "/health",
+    "/api/v1/health",
+    "/api/v1/auth/pair",
+    "/api/v1/auth/ws-ticket",
+    "/api/v1/devices",
+    "/api/v1/devices/{id}",
+    "/api/v1/overview",
+    "/api/v1/agents",
+    "/api/v1/agents/{id}",
+    "/api/v1/agents/{id}/tasks",
+    "/api/v1/agents/{id}/logs",
+    "/api/v1/agents/{id}/sessions",
+    "/api/v1/agents/{id}/files",
+    "/api/v1/agents/{id}/usage",
+    "/api/v1/tasks",
+    "/api/v1/tasks/{id}",
+    "/api/v1/alerts",
+    "/api/v1/alerts/{id}",
+    "/api/v1/alerts/{id}/ack",
+    "/api/v1/alerts/{id}/snooze",
+    "/api/v1/alerts/{id}/resolve",
+    "/api/v1/timeline",
+    "/api/v1/events",
+    "/api/v1/usage",
+    "/api/v1/costs",
+    "/api/v1/openapi.json",
+];
+
+fn check_openapi_paths(json: &serde_json::Value) -> Result<(), String> {
+    let Some(paths) = json["paths"].as_object() else {
+        return Err("no paths object in OpenAPI document".to_string());
+    };
+    if paths.is_empty() {
+        return Err("no routes registered".to_string());
+    }
+    for path in EXPECTED_OPENAPI_PATHS {
+        if !paths.contains_key(*path) {
+            return Err(format!("missing required path: {path}"));
+        }
+    }
+    Ok(())
+}
+
 fn openapi(args: &[String]) -> i32 {
     let mut out: Option<&str> = None;
     let mut check = false;
@@ -77,9 +123,8 @@ fn openapi(args: &[String]) -> i32 {
             }
             start = absolute;
         }
-        let paths = json["paths"].as_object().expect("paths object");
-        if paths.is_empty() {
-            eprintln!("no routes registered");
+        if let Err(error) = check_openapi_paths(&json) {
+            eprintln!("{error}");
             return 1;
         }
     }
@@ -269,6 +314,29 @@ fn data_dir_from(
 #[cfg(test)]
 mod tests {
     use super::parse_repos_from_config;
+
+    #[test]
+    fn generated_openapi_contains_all_required_paths() {
+        let required = super::EXPECTED_OPENAPI_PATHS;
+        let json =
+            serde_json::to_value(<hq_api::openapi::ApiDoc as utoipa::OpenApi>::openapi()).unwrap();
+        let paths = json["paths"].as_object().unwrap();
+        for path in required {
+            assert!(paths.contains_key(*path), "missing required path: {path}");
+        }
+    }
+
+    #[test]
+    fn openapi_check_rejects_document_missing_required_path() {
+        let mut json =
+            serde_json::to_value(<hq_api::openapi::ApiDoc as utoipa::OpenApi>::openapi()).unwrap();
+        json["paths"]
+            .as_object_mut()
+            .unwrap()
+            .remove("/api/v1/timeline");
+        let error = super::check_openapi_paths(&json).unwrap_err();
+        assert!(error.contains("/api/v1/timeline"), "{error}");
+    }
 
     #[test]
     fn repos_default_to_empty_and_read_configured_paths() {

@@ -20,6 +20,7 @@ use utoipa::OpenApi;
         crate::handlers::alerts::snooze_alert,
         crate::handlers::alerts::resolve_alert,
         crate::handlers::timeline::timeline,
+        crate::handlers::timeline::events,
         crate::handlers::usage::usage,
         crate::handlers::usage::costs,
         crate::handlers::meta::openapi_json,
@@ -28,6 +29,7 @@ use utoipa::OpenApi;
         crate::auth::devices,
         crate::auth::revoke_device,
         crate::health::health,
+        crate::health::health_legacy,
     ),
     components(schemas(
         crate::dto::AgentCardDto,

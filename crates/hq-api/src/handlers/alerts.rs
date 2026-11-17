@@ -132,12 +132,16 @@ async fn mutate(
 ) -> Result<axum::Json<dto::AlertActionResult>, ApiError> {
     let current = state.store.alert(&id).await?.ok_or(ApiError::NotFound)?;
     let now = crate::auth::now_ms();
+    let is_snooze = kind == hq_core::EventKind::AlertSnoozed;
+    let until_ms = now + body.minutes.unwrap_or(15).max(0) * 60_000;
+    // Ack/resolve stay idempotent. A snooze with a different deadline is a new
+    // instruction even when the alert is already snoozed.
+    let deadline_changed = is_snooze && current.snooze_until_ms != Some(until_ms);
     let mut snooze_until_ms = current.snooze_until_ms;
-    let seq = if current.state == target_state {
+    let seq = if current.state == target_state && !deadline_changed {
         last_event_seq(&state, &id, kind_name).await?.unwrap_or(0)
     } else {
-        let until_ms = now + body.minutes.unwrap_or(15).max(0) * 60_000;
-        if kind == hq_core::EventKind::AlertSnoozed {
+        if is_snooze {
             snooze_until_ms = Some(until_ms);
         }
         let mut payload = serde_json::json!({
@@ -150,6 +154,11 @@ async fn mutate(
         if let Some(note) = body.note {
             payload["note"] = serde_json::json!(note);
         }
+        let idempotency_key = if is_snooze {
+            format!("api-alert-{id}-{kind_name}-{now}-{until_ms}")
+        } else {
+            format!("api-alert-{id}-{kind_name}-{now}")
+        };
         let draft = hq_core::EventDraft {
             event_ts_ms: now,
             kind,
@@ -157,7 +166,7 @@ async fn mutate(
             source: hq_core::SourceId("user".to_string()),
             correlation_id: None,
             causation_id: None,
-            idempotency_key: Some(format!("api-alert-{id}-{kind_name}-{now}")),
+            idempotency_key: Some(idempotency_key),
             payload,
         };
         let ingestor = hq_store::Ingestor::new(state.store.clone());

@@ -271,6 +271,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Legacy-compatible alias of `/api/v1/timeline`, kept in OpenAPI so generated
+         *     clients see every route actually served by the router.
+         */
+        get: operations["events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -375,6 +395,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Legacy path kept for S03 probes; same payload as `/api/v1/health`. */
+        get: operations["health_legacy"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1002,6 +1039,34 @@ export interface operations {
             };
         };
     };
+    events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Seq cursor. Both `since` and `cursor` are accepted. */
+                since: number | null;
+                cursor: number | null;
+                until: number | null;
+                kind: string | null;
+                subject: string | null;
+                limit: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -1158,6 +1223,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageReportDto"];
+                };
+            };
+        };
+    };
+    health_legacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Health */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };

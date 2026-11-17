@@ -137,7 +137,7 @@ pub fn build_router(state: AppState) -> Router {
             get(crate::handlers::alerts::alert_detail),
         )
         .route("/api/v1/timeline", get(crate::handlers::timeline::timeline))
-        .route("/api/v1/events", get(crate::handlers::timeline::timeline))
+        .route("/api/v1/events", get(crate::handlers::timeline::events))
         .route("/api/v1/usage", get(crate::handlers::usage::usage))
         .route("/api/v1/costs", get(crate::handlers::usage::costs))
         .route(

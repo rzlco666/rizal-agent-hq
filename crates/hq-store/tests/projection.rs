@@ -138,8 +138,14 @@ async fn logs_render_in_requested_locale() {
         .await
         .unwrap();
     let agent = AgentId::parse("agent:omp").unwrap();
-    let id = store.logs(&agent, Locale::Id, 10).await.unwrap();
-    let en = store.logs(&agent, Locale::En, 10).await.unwrap();
+    let id = store
+        .logs(&agent, Locale::Id, 10, Default::default())
+        .await
+        .unwrap();
+    let en = store
+        .logs(&agent, Locale::En, 10, Default::default())
+        .await
+        .unwrap();
     assert_eq!(id.len(), 1);
     assert_eq!(en.len(), 1);
     assert!(id[0].text.contains("menjalankan tes"));

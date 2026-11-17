@@ -1,6 +1,7 @@
 mod common;
 
 use crate::common::*;
+use hq_store::{AgentId, EventKind, Subject};
 
 #[tokio::test]
 async fn health_reports_db_and_seq() {
@@ -94,4 +95,45 @@ async fn logs_are_locale_aware() {
     )
     .await;
     assert!(j["items"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn log_filters_apply_before_limit() {
+    let app = test_app().await;
+    let log = |level: &str, detail: &str, ts_ms: i64| {
+        let mut event = draft(
+            EventKind::LogRecorded,
+            Subject::Agent(AgentId("agent:omp".to_string())),
+            serde_json::json!({
+                "message": detail,
+                "level": level,
+                "sentence": {
+                    "key": "agent.logged",
+                    "params": {"agent": "agent:omp", "detail": detail}
+                }
+            }),
+        );
+        event.event_ts_ms = ts_ms;
+        event
+    };
+    app.ingestor
+        .ingest(vec![
+            log("error", "unrelated-newer", 1_700_000_060_000),
+            log("info", "needle-older", 1_700_000_000_000),
+        ])
+        .await
+        .unwrap();
+    let j = body_json(
+        get(
+            app.app,
+            "/api/v1/agents/agent:omp/logs?level=info&q=needle-older&before=1700000060000&limit=1",
+            loopback(),
+        )
+        .await,
+    )
+    .await;
+    let items = j["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1, "filters must run before limit: {j}");
+    assert_eq!(items[0]["level"], "info");
+    assert!(items[0]["text"].as_str().unwrap().contains("needle-older"));
 }

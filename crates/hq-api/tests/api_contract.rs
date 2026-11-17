@@ -10,6 +10,17 @@ fn openapi_covers_every_route_and_schema() {
 }
 
 #[test]
+fn openapi_documents_timeline_and_events_aliases() {
+    let json = serde_json::to_value(ApiDoc::openapi()).unwrap();
+    for path in ["/api/v1/timeline", "/api/v1/events"] {
+        assert!(
+            json["paths"][path]["get"]["responses"]["200"].is_object(),
+            "missing documented GET {path}"
+        );
+    }
+}
+
+#[test]
 fn openapi_has_no_unresolved_schema_references() {
     let json = serde_json::to_value(ApiDoc::openapi()).unwrap();
     let rendered = json.to_string();

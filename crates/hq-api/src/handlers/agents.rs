@@ -124,22 +124,22 @@ pub async fn agent_logs(
 ) -> Result<Json<dto::LogPage>, ApiError> {
     let limit = query.limit.unwrap_or(50).min(500);
     let locale = locale_of(query.locale.as_deref());
-    let mut items: Vec<dto::LogView> = state
+    let items: Vec<dto::LogView> = state
         .store
-        .logs(&AgentId(id), locale, limit)
+        .logs(
+            &AgentId(id),
+            locale,
+            limit,
+            hq_store::LogFilter {
+                level: query.level,
+                q: query.q,
+                before: query.before,
+            },
+        )
         .await?
         .into_iter()
         .map(Into::into)
         .collect();
-    if let Some(level) = query.level {
-        items.retain(|entry| entry.level == level);
-    }
-    if let Some(q) = query.q {
-        items.retain(|entry| entry.text.contains(&q));
-    }
-    if let Some(before) = query.before {
-        items.retain(|entry| entry.ts_ms < before);
-    }
     Ok(Json(dto::LogPage {
         items,
         next_cursor: None,

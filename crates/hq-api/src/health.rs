@@ -42,6 +42,7 @@ pub async fn health(State(state): State<AppState>) -> Result<Json<HealthResponse
 }
 
 /// Legacy path kept for S03 probes; same payload as `/api/v1/health`.
+#[utoipa::path(get, path = "/health", tag = "Meta", responses((status = 200, description = "Health", body = HealthResponse)))]
 pub async fn health_legacy(
     State(state): State<AppState>,
 ) -> Result<Json<HealthResponse>, ApiError> {

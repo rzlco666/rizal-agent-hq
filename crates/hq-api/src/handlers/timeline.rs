@@ -41,3 +41,19 @@ pub async fn timeline(
         .await?;
     Ok(Json(page.into()))
 }
+
+/// Legacy-compatible alias of `/api/v1/timeline`, kept in OpenAPI so generated
+/// clients see every route actually served by the router.
+#[utoipa::path(
+    get,
+    path = "/api/v1/events",
+    tag = "Timeline",
+    params(TimelineQuery),
+    responses((status = 200, description = "Event page", body = dto::EventPage))
+)]
+pub async fn events(
+    state: State<AppState>,
+    query: Query<TimelineQuery>,
+) -> Result<Json<dto::EventPage>, ApiError> {
+    timeline(state, query).await
+}
