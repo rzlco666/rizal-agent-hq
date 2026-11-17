@@ -9,7 +9,7 @@ use tower::ServiceExt;
 async fn loopback_is_owner() {
     let app = test_app().await;
     assert_eq!(
-        get(app.app, "/api/v1/health", loopback()).await.status(),
+        get(app.app, "/api/v1/agents", loopback()).await.status(),
         StatusCode::OK
     );
 }
@@ -18,7 +18,7 @@ async fn loopback_is_owner() {
 async fn remote_without_token_is_401() {
     let app = test_app().await;
     assert_eq!(
-        get(app.app, "/api/v1/health", remote()).await.status(),
+        get(app.app, "/api/v1/agents", remote()).await.status(),
         StatusCode::UNAUTHORIZED
     );
 }
@@ -26,7 +26,7 @@ async fn remote_without_token_is_401() {
 #[tokio::test]
 async fn forwarded_header_is_not_owner() {
     let app = test_app().await;
-    let mut req = request("/api/v1/health", loopback());
+    let mut req = request("/api/v1/agents", loopback());
     req.headers_mut()
         .insert("x-forwarded-for", "203.0.113.9".parse().unwrap());
     let res = app.app.oneshot(req).await.unwrap();
@@ -37,7 +37,7 @@ async fn forwarded_header_is_not_owner() {
 async fn bearer_token_with_scope_is_accepted() {
     let (app, token) = test_app_with_device(&["read"]).await;
     assert_eq!(
-        get_with_bearer(app.app, "/api/v1/health", &token)
+        get_with_bearer(app.app, "/api/v1/agents", &token)
             .await
             .status(),
         StatusCode::OK
@@ -49,7 +49,7 @@ async fn cookie_mutation_without_csrf_is_403() {
     let (app, token, _) = test_app_with_cookie_device().await;
     let res = post_with_cookie(
         app.app.clone(),
-        "/api/v1/auth/ws-ticket",
+        "/api/v1/alerts/a/ack",
         serde_json::json!({}),
         &token,
         None,
@@ -62,7 +62,7 @@ async fn cookie_mutation_without_csrf_is_403() {
 
     let res = post_with_cookie(
         app.app,
-        "/api/v1/auth/ws-ticket",
+        "/api/v1/alerts/a/ack",
         serde_json::json!({}),
         &token,
         Some("csrf-value"),

@@ -102,6 +102,7 @@ pub async fn test_app_with_device(scopes: &[&str]) -> (TestApp, String) {
 
 pub async fn test_app_with_cookie_device() -> (TestApp, String, String) {
     let (app, token) = test_app_with_device(&["read", "write"]).await;
+    app.ingestor.ingest(vec![alert_raised("a")]).await.unwrap();
     (app, token, "csrf-value".to_string())
 }
 
@@ -313,4 +314,10 @@ pub fn log_with_secret(agent: &str, message: &str) -> EventDraft {
             "sentence": {"key": "log.message", "params": {"detail": message}}
         }),
     )
+}
+
+pub async fn seeded_alert_app() -> TestApp {
+    let app = test_app().await;
+    app.ingestor.ingest(vec![alert_raised("a1")]).await.unwrap();
+    app
 }

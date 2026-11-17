@@ -219,6 +219,7 @@ pub struct AlertActionResult {
     pub id: String,
     pub state: String,
     pub seq: i64,
+    pub snooze_until_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
