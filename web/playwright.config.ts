@@ -44,7 +44,11 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: 'pnpm exec vite preview --host 127.0.0.1 --port 8901 --strictPort',
+    command: [
+      'rm -rf .tmp/e2e-data && mkdir -p .tmp/e2e-data',
+      'HQ_WEB_DIR=build HQ_ALLOW_SEED=1',
+      '"${HQ_BIN:-../target/debug/rizal-agent-hq}" serve --data .tmp/e2e-data --seed tests/fixtures/e2e.json --allow-seed --port 8901'
+    ].join(' && '),
     url: 'http://127.0.0.1:8901',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
