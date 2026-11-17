@@ -1,8 +1,10 @@
+pub mod muse;
 pub mod cursor;
 pub mod omp_db;
 pub mod omp;
 mod presence;
 
+pub use muse::{parse_heartbeat, Heartbeat, MuseAdapter};
 pub use cursor::{parse_cursor_terminal, CursorAdapter, CursorTerminal};
 pub use omp_db::OmpDbAdapter;
 pub use omp::{
