@@ -164,7 +164,7 @@
       data-active={activeIndex}
       onkeydown={handleKeydown}
     >
-      <div class="uplot-host" bind:this={host} class:hidden={plotReady}></div>
+      <div class="uplot-host" bind:this={host}></div>
       {#if !plotReady}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <polyline points={polyline('shadow_usd')} fill="none" stroke="var(--ink-10)" stroke-width="1" />
@@ -263,9 +263,6 @@
     font-family: var(--font-mono);
   }
 
-  .hidden {
-    display: none;
-  }
 
   .loading {
     min-height: 160px;

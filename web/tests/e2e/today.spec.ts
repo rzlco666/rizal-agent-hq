@@ -29,10 +29,10 @@ test('agent table shows status, sentence, usage, alerts', async ({ page }) => {
 test('ledger has one main chart and a range switch', async ({ page }) => {
   await expect(page.getByRole('tab', { name: '24 jam' })).toBeVisible();
   await expect(page.getByTestId('ledger-chart')).toHaveCount(1);
-  await expect(page.locator('.uplot')).toHaveCount(1);
+  await expect(page.locator('.uplot')).toBeVisible();
   await page.getByRole('tab', { name: '7 hari' }).click();
   await expect(page.getByTestId('ledger-chart')).toHaveCount(1);
-  await expect(page.locator('.uplot')).toHaveCount(1);
+  await expect(page.locator('.uplot')).toBeVisible();
 });
 
 
