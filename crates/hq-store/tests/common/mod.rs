@@ -40,7 +40,16 @@ pub fn agent_observed(agent: &str, status: &str) -> EventDraft {
         correlation_id: None,
         causation_id: None,
         idempotency_key: None,
-        payload: serde_json::json!({ "observed_at_ms": 1000, "status": status }),
+        payload: serde_json::json!({
+            "observed_at_ms": 1000,
+            "runtime_key": "test",
+            "status": status,
+            "kind": "Utama",
+            "activity": { "key": "agent.process_running", "params": { "family": "test" } },
+            "processes": 1,
+            "cpu_percent": 0.0,
+            "evidence": "L1"
+        }),
     }
 }
 

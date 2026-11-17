@@ -25,7 +25,12 @@ pub async fn run(args: &[String]) -> i32 {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"));
-    let probes = Probes::collect(&configured_repos(&home), &home);
+    let data_dir = data_dir_from(
+        &home,
+        std::env::var_os("HQ_DATA").as_deref(),
+        std::env::var_os("XDG_DATA_HOME").as_deref(),
+    );
+    let probes = Probes::collect(&configured_repos(&home), &data_dir);
     let now_ms = WallClock.now_ms();
     let adapter = ProcessPresenceAdapter::default();
     let ctx = CollectCtx {
@@ -91,6 +96,21 @@ fn parse_repos_from_config(contents: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn data_dir_from(
+    home: &std::path::Path,
+    hq_data: Option<&std::ffi::OsStr>,
+    xdg_data_home: Option<&std::ffi::OsStr>,
+) -> PathBuf {
+    hq_data
+        .map(PathBuf::from)
+        .or_else(|| {
+            xdg_data_home
+                .map(PathBuf::from)
+                .map(|path| path.join("rizal-agent-hq"))
+        })
+        .unwrap_or_else(|| home.join(".local/share/rizal-agent-hq"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_repos_from_config;
@@ -101,6 +121,23 @@ mod tests {
         assert_eq!(
             parse_repos_from_config("repos = [\"/work/alpha\", \"/work/beta\"]"),
             vec!["/work/alpha", "/work/beta"]
+        );
+    }
+
+    #[test]
+    fn data_path_uses_hq_override_then_xdg_then_default() {
+        let home = std::path::Path::new("/home/test");
+        assert_eq!(
+            super::data_dir_from(home, Some(std::ffi::OsStr::new("/data/hq")), None),
+            std::path::PathBuf::from("/data/hq")
+        );
+        assert_eq!(
+            super::data_dir_from(home, None, Some(std::ffi::OsStr::new("/data"))),
+            std::path::PathBuf::from("/data/rizal-agent-hq")
+        );
+        assert_eq!(
+            super::data_dir_from(home, None, None),
+            std::path::PathBuf::from("/home/test/.local/share/rizal-agent-hq")
         );
     }
 }
