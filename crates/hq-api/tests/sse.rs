@@ -180,13 +180,14 @@ async fn sse_entity_upserts_include_type_and_redacted_payload() {
 }
 
 #[tokio::test]
-async fn future_last_event_id_requires_snapshot() {
+async fn future_last_event_id_uses_observed_snapshot_watermark() {
     let (addr, _ing, _dir) = spawn().await;
     let response = request(addr, &[("Last-Event-ID", "99")], "snapshot_required").await;
     assert!(
         response.contains("\"type\":\"snapshot_required\""),
         "{response}"
     );
+    assert!(response.contains("\"seq\":0"), "{response}");
 }
 #[tokio::test]
 async fn sse_live_broadcast_lag_emits_snapshot_required() {

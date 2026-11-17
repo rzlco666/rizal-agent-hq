@@ -57,7 +57,7 @@ pub async fn sse_handler(
         .as_ref()
         .ok()
         .and_then(|events| events.last().map(|event| event.seq.0))
-        .unwrap_or(cursor);
+        .unwrap_or(0);
     let snapshot_seq = last_seq.unwrap_or(cursor).max(replay_last_seq);
     let complete = last_seq.is_some_and(|watermark| cursor <= watermark)
         && replay_events.as_ref().is_ok_and(|events| {
