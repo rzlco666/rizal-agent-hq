@@ -9,3 +9,6 @@ hq-core = { path = "../hq-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+ulid = { workspace = true }
