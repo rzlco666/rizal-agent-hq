@@ -21,6 +21,24 @@ async fn agent_observed_upserts_card() {
 }
 
 #[tokio::test]
+async fn agent_observed_persists_payload_runtime_key() {
+    let (store, dir) = test_store().await;
+    let mut draft = agent_observed("agent:omp", "bekerja");
+    draft.payload["runtime_key"] = serde_json::json!("presence:omp");
+    store.append(vec![draft]).await.unwrap();
+
+    let conn = rusqlite::Connection::open(dir.path().join("hq.db")).unwrap();
+    let runtime_key: String = conn
+        .query_row(
+            "SELECT runtime_key FROM agents WHERE id = 'agent:omp'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(runtime_key, "presence:omp");
+}
+
+#[tokio::test]
 async fn usage_is_aggregated_per_minute_and_day() {
     let (store, _dir) = test_store().await;
     store

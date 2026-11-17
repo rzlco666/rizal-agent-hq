@@ -11,6 +11,14 @@ pub fn apply(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
         _ => return Ok(()),
     }
     let id = ev.draft.subject.key();
+    let runtime_key = ev
+        .draft
+        .payload
+        .get("runtime_key")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&id)
+        .to_string();
     let name = id.split(':').next_back().unwrap_or(&id).to_uppercase();
     let status = ev
         .draft
@@ -30,7 +38,7 @@ pub fn apply(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
     let last_seen = ev.draft.event_ts_ms;
     tx.execute(
         "INSERT INTO agents (id,name,role,kind,parent_id,runtime_key,status,activity_json,provider,model,evidence,last_seen_ms,updated_seq) VALUES (?1,?2,'agent','utama',NULL,?3,?4,'{}',NULL,NULL,'L1',?5,?6) ON CONFLICT(id) DO UPDATE SET name=excluded.name,status=excluded.status,last_seen_ms=excluded.last_seen_ms,updated_seq=excluded.updated_seq",
-        rusqlite::params![id, name, id, status_to_str(status), last_seen, ev.seq.0],
+        rusqlite::params![id, name, runtime_key, status_to_str(status), last_seen, ev.seq.0],
     )?;
     Ok(())
 }
