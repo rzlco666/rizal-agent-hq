@@ -1,6 +1,6 @@
 use hq_connectors::probes::ProcessInfo;
 use hq_connectors::runtime::omp::{
-    omp_status, omp_usage_events, OmpAdapter, OmpActivity, OmpMessageMeta, OmpStats,
+    OmpActivity, OmpAdapter, OmpMessageMeta, OmpStats, omp_status, omp_usage_events,
 };
 use hq_connectors::runtime::{CollectCtx, RuntimeAdapter};
 use hq_core::EventKind;
@@ -29,9 +29,10 @@ fn maps_overall_and_models() {
         .unwrap();
     assert_eq!(total.payload["input_tokens"], s.overall.total_input_tokens);
     assert!(d.iter().any(|e| e.subject.key() == "agent:omp"));
-    assert!(d
-        .iter()
-        .any(|e| e.kind == EventKind::UsageRecorded && e.payload["provider"] == "anthropic"));
+    assert!(
+        d.iter()
+            .any(|e| e.kind == EventKind::UsageRecorded && e.payload["provider"] == "anthropic")
+    );
     for event in &d {
         event.validate().unwrap();
     }
@@ -143,11 +144,7 @@ fn recent_non_tool_message_is_thinking() {
 
 #[test]
 fn activity_and_evidence_come_from_structured_metadata() {
-    let a: OmpActivity = omp_status(
-        proc("omp"),
-        recent_msg("toolUse", 1_000_000),
-        1_000_000,
-    );
+    let a: OmpActivity = omp_status(proc("omp"), recent_msg("toolUse", 1_000_000), 1_000_000);
     assert_eq!(a.activity.key, "agent.working_in_folder");
     assert_eq!(
         a.activity.params.get("folder").map(String::as_str),

@@ -1,4 +1,4 @@
-use hq_connectors::runtime::muse::{parse_heartbeat, MuseAdapter};
+use hq_connectors::runtime::muse::{MuseAdapter, parse_heartbeat};
 use hq_connectors::runtime::{CollectCtx, RuntimeAdapter};
 use hq_core::{EventKind, EvidenceLevel};
 use serde_json::json;

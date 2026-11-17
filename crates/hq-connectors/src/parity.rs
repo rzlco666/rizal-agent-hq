@@ -156,7 +156,11 @@ pub async fn compare_states(
     })
 }
 
-fn selected(agents: &[AgentState], aliases: &HashMap<String, String>, subset: &[&str]) -> Vec<AgentState> {
+fn selected(
+    agents: &[AgentState],
+    aliases: &HashMap<String, String>,
+    subset: &[&str],
+) -> Vec<AgentState> {
     let mut selected: Vec<AgentState> = agents
         .iter()
         .filter_map(|agent| {

@@ -1,9 +1,10 @@
 use crate::runtime::omp::slug;
 use hq_core::{
-    redact_text, AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId,
-    Status, Subject,
+    AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId, Status, Subject,
+    redact_text,
 };
 use serde_json::json;
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -71,7 +72,7 @@ impl CursorAdapter {
 
     pub fn observe_dirs(&self, now_ms: i64) -> Vec<EventDraft> {
         let mut terminals = self.terminals();
-        terminals.sort_by(|left, right| right.0.cmp(&left.0));
+        terminals.sort_by_key(|terminal| Reverse(terminal.0));
         terminals.truncate(MAX_TERMINALS);
 
         if terminals.is_empty() {
@@ -80,15 +81,15 @@ impl CursorAdapter {
 
         let mut by_workspace: BTreeMap<String, TerminalView> = BTreeMap::new();
         for (modified, workspace, terminal) in &terminals {
-            by_workspace.entry(workspace.clone()).or_insert_with(|| {
-                TerminalView {
+            by_workspace
+                .entry(workspace.clone())
+                .or_insert_with(|| TerminalView {
                     modified: *modified,
                     terminal: terminal.clone(),
-                }
-            });
+                });
         }
         let mut workspaces: Vec<(String, TerminalView)> = by_workspace.into_iter().collect();
-        workspaces.sort_by(|left, right| right.1.modified.cmp(&left.1.modified));
+        workspaces.sort_by_key(|workspace| Reverse(workspace.1.modified));
         workspaces.truncate(MAX_WORKSPACES);
 
         let workspace_count = self.workspace_count();
@@ -125,7 +126,12 @@ impl CursorAdapter {
 
     fn workspace_count(&self) -> usize {
         fs::read_dir(self.root.join("projects"))
-            .map(|entries| entries.filter_map(Result::ok).filter(|entry| entry.path().is_dir()).count())
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_dir())
+                    .count()
+            })
             .unwrap_or_default()
     }
 
@@ -171,10 +177,7 @@ impl CursorAdapter {
 
 #[async_trait::async_trait]
 impl crate::runtime::RuntimeAdapter for CursorAdapter {
-    async fn observe(
-        &self,
-        ctx: &crate::runtime::CollectCtx,
-    ) -> Result<Vec<EventDraft>, String> {
+    async fn observe(&self, ctx: &crate::runtime::CollectCtx) -> Result<Vec<EventDraft>, String> {
         Ok(self.observe_dirs(ctx.now_ms))
     }
 }
@@ -235,12 +238,7 @@ fn workspace_event(
     }
 }
 
-fn aggregate_event(
-    now_ms: i64,
-    status: Status,
-    workspaces: usize,
-    terminals: usize,
-) -> EventDraft {
+fn aggregate_event(now_ms: i64, status: Status, workspaces: usize, terminals: usize) -> EventDraft {
     EventDraft {
         event_ts_ms: now_ms,
         kind: EventKind::AgentObserved,

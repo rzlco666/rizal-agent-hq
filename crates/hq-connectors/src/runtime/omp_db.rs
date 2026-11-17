@@ -1,8 +1,10 @@
 use crate::probes::ProcessInfo;
 use crate::runtime::classify;
-use crate::runtime::omp::{omp_status, slug, OmpMessageMeta};
-use hq_core::{AgentId, AgentKind, EventDraft, EventKind, SessionId, SourceId, Subject, UsageScope};
-use rusqlite::{params, Connection, OpenFlags};
+use crate::runtime::omp::{OmpMessageMeta, omp_status, slug};
+use hq_core::{
+    AgentId, AgentKind, EventDraft, EventKind, SessionId, SourceId, Subject, UsageScope,
+};
+use rusqlite::{Connection, OpenFlags, params};
 use serde_json::json;
 use std::path::Path;
 use std::time::Duration;
@@ -42,7 +44,10 @@ impl OmpDbAdapter {
 
     pub fn observe_rows(&self, now_ms: i64, processes: &[&ProcessInfo]) -> Vec<EventDraft> {
         let process_count = processes.len();
-        let cpu_percent = processes.iter().map(|process| process.pcpu as f64).sum::<f64>();
+        let cpu_percent = processes
+            .iter()
+            .map(|process| process.pcpu as f64)
+            .sum::<f64>();
         let Some(conn) = self.connect() else {
             return Vec::new();
         };
@@ -98,7 +103,7 @@ impl OmpDbAdapter {
             events.push(EventDraft {
                 event_ts_ms: ended_ms,
                 kind: EventKind::SessionEnded,
-                subject: subject,
+                subject,
                 source: SourceId("local".to_owned()),
                 correlation_id: None,
                 causation_id: None,
@@ -228,7 +233,11 @@ impl OmpDbAdapter {
         if workers.len() > MAX_WORKERS {
             let tokens: i64 = workers.iter().map(|worker| worker.tokens).sum();
             let cost: f64 = workers.iter().map(|worker| worker.cost).sum();
-            let last_ms = workers.iter().map(|worker| worker.last_ms).max().unwrap_or(1);
+            let last_ms = workers
+                .iter()
+                .map(|worker| worker.last_ms)
+                .max()
+                .unwrap_or(1);
             let observed = omp_status(
                 processes.first().copied().cloned(),
                 Some(OmpMessageMeta {
@@ -242,9 +251,7 @@ impl OmpDbAdapter {
             events.push(EventDraft {
                 event_ts_ms: last_ms.max(1),
                 kind: EventKind::AgentObserved,
-                subject: Subject::Agent(AgentId(
-                    "agent:omp/worker/omp-workers-agg".to_owned(),
-                )),
+                subject: Subject::Agent(AgentId("agent:omp/worker/omp-workers-agg".to_owned())),
                 source: SourceId("local".to_owned()),
                 correlation_id: None,
                 causation_id: None,
@@ -274,10 +281,7 @@ impl OmpDbAdapter {
 
 #[async_trait::async_trait]
 impl crate::runtime::RuntimeAdapter for OmpDbAdapter {
-    async fn observe(
-        &self,
-        ctx: &crate::runtime::CollectCtx,
-    ) -> Result<Vec<EventDraft>, String> {
+    async fn observe(&self, ctx: &crate::runtime::CollectCtx) -> Result<Vec<EventDraft>, String> {
         let omp: Vec<&ProcessInfo> = ctx
             .processes
             .iter()

@@ -1,7 +1,7 @@
 use crate::runtime::omp::slug;
 use hq_core::{
-    redact_text, AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId,
-    Status, Subject,
+    AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId, Status, Subject,
+    redact_text,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -78,10 +78,7 @@ impl MuseAdapter {
 
 #[async_trait::async_trait]
 impl crate::runtime::RuntimeAdapter for MuseAdapter {
-    async fn observe(
-        &self,
-        ctx: &crate::runtime::CollectCtx,
-    ) -> Result<Vec<EventDraft>, String> {
+    async fn observe(&self, ctx: &crate::runtime::CollectCtx) -> Result<Vec<EventDraft>, String> {
         Ok(self.observe_dirs(ctx.now_ms))
     }
 }

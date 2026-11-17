@@ -1,5 +1,5 @@
-use hq_connectors::parity::{compare_states, parse_aliases, State};
-use serde_json::{json, Value};
+use hq_connectors::parity::{State, compare_states, parse_aliases};
+use serde_json::{Value, json};
 
 fn fake_oracle(value: Value) -> State {
     serde_json::from_value(value).unwrap()

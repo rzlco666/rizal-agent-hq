@@ -3,8 +3,8 @@ use hq_connectors::runtime::omp_db::OmpDbAdapter;
 use hq_connectors::runtime::{CollectCtx, RuntimeAdapter};
 use hq_core::EventKind;
 use rusqlite::Connection;
-use std::time::Instant;
 use serde_json::json;
+use std::time::Instant;
 
 const NOW: i64 = 1_000_000;
 
@@ -51,14 +51,7 @@ fn fixture_omp_db_with_worker_types(worker_types: &[&str]) -> tempfile::TempDir 
     ] {
         conn.execute(
             "INSERT INTO session_rollup VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 'anthropic:claude', 4)",
-            rusqlite::params![
-                file,
-                requests,
-                NOW - 600_000,
-                NOW - 300_000,
-                tokens,
-                cost
-            ],
+            rusqlite::params![file, requests, NOW - 600_000, NOW - 300_000, tokens, cost],
         )
         .unwrap();
     }
@@ -89,12 +82,14 @@ async fn session_rollup_becomes_session_and_usage() {
         .observe(&ctx())
         .await
         .unwrap();
-    assert!(out
-        .iter()
-        .any(|d| d.kind == EventKind::SessionStarted && d.payload["started_at_ms"].is_number()));
-    assert!(out
-        .iter()
-        .any(|d| d.subject.key().starts_with("agent:omp/session/")));
+    assert!(
+        out.iter()
+            .any(|d| d.kind == EventKind::SessionStarted && d.payload["started_at_ms"].is_number())
+    );
+    assert!(
+        out.iter()
+            .any(|d| d.subject.key().starts_with("agent:omp/session/"))
+    );
     assert!(out.iter().any(|d| d.kind == EventKind::SessionEnded));
     assert!(out.iter().any(|d| d.kind == EventKind::UsageRecorded));
     for event in &out {
@@ -109,9 +104,10 @@ async fn subagent_messages_create_worker_agents() {
         .observe(&ctx())
         .await
         .unwrap();
-    assert!(out
-        .iter()
-        .any(|d| d.subject.key().starts_with("agent:omp/worker/")));
+    assert!(
+        out.iter()
+            .any(|d| d.subject.key().starts_with("agent:omp/worker/"))
+    );
     assert!(out.iter().any(|d| d.payload["worker_type"] == "researcher"));
 }
 
@@ -134,9 +130,7 @@ async fn no_message_content_leaks() {
 
 #[tokio::test]
 async fn workers_are_capped_at_eight_plus_aggregate() {
-    let types = [
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
-    ];
+    let types = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"];
     let db = fixture_omp_db_with_worker_types(&types);
     let out = OmpDbAdapter::new(db.path().join("stats.db"))
         .observe(&ctx())
@@ -147,9 +141,11 @@ async fn workers_are_capped_at_eight_plus_aggregate() {
         .filter(|d| d.subject.key().starts_with("agent:omp/worker/"))
         .collect();
     assert_eq!(workers.len(), 9);
-    assert!(workers
-        .iter()
-        .any(|d| d.subject.key() == "agent:omp/worker/omp-workers-agg"));
+    assert!(
+        workers
+            .iter()
+            .any(|d| d.subject.key() == "agent:omp/worker/omp-workers-agg")
+    );
 }
 
 #[tokio::test]

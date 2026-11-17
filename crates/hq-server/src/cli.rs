@@ -194,7 +194,10 @@ async fn collect_once(args: &[String]) -> i32 {
     let mut agents = Vec::new();
     let mut seen = HashSet::new();
     for event in events.iter().rev() {
-        if !matches!(event.kind, EventKind::AgentObserved | EventKind::AgentStatusChanged) {
+        if !matches!(
+            event.kind,
+            EventKind::AgentObserved | EventKind::AgentStatusChanged
+        ) {
             continue;
         }
         let id = event.subject.key();
@@ -207,12 +210,7 @@ async fn collect_once(args: &[String]) -> i32 {
             "evidence": event.payload.get("evidence").cloned().unwrap_or_else(|| serde_json::json!("L1")),
         }));
     }
-    agents.sort_by_key(|agent| {
-        agent["id"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned()
-    });
+    agents.sort_by_key(|agent| agent["id"].as_str().unwrap_or_default().to_owned());
 
     let mut output = serde_json::to_value(&probes).unwrap_or_default();
     if let Some(object) = output.as_object_mut() {
@@ -226,15 +224,10 @@ async fn collect_once(args: &[String]) -> i32 {
     if probes.all_failed() { 1 } else { 0 }
 }
 
-
 async fn parity(args: &[String]) -> i32 {
     let mut oracle: Option<&str> = None;
     let mut candidate: Option<&str> = None;
-    let mut subset = vec![
-        "omp".to_owned(),
-        "cursor".to_owned(),
-        "muse".to_owned(),
-    ];
+    let mut subset = vec!["omp".to_owned(), "cursor".to_owned(), "muse".to_owned()];
     let mut duration_s = 600_u64;
     let mut interval_s = 5_u64;
     let mut aliases_path = "tools/parity/aliases.json".to_owned();
@@ -302,10 +295,7 @@ async fn parity(args: &[String]) -> i32 {
     let deadline = Instant::now() + Duration::from_secs(duration_s);
     let mut reports = Vec::new();
     loop {
-        let sample = match tokio::try_join!(
-            fetch_state(oracle_url),
-            fetch_state(candidate_url)
-        ) {
+        let sample = match tokio::try_join!(fetch_state(oracle_url), fetch_state(candidate_url)) {
             Ok(sample) => sample,
             Err(error) => {
                 eprintln!("parity fetch failed: {error}");
@@ -334,11 +324,9 @@ async fn parity(args: &[String]) -> i32 {
         .sum::<f64>()
         + report.status_match_pct;
     report.status_match_pct = status_sum / samples as f64;
-    report.usage_diff_pct = reports
-        .iter()
-        .fold(report.usage_diff_pct, |max, sample| {
-            max.max(sample.usage_diff_pct)
-        });
+    report.usage_diff_pct = reports.iter().fold(report.usage_diff_pct, |max, sample| {
+        max.max(sample.usage_diff_pct)
+    });
     report.verdict = if report.missing_from_candidate.is_empty()
         && report.status_match_pct >= 90.0
         && report.usage_diff_pct <= 15.0

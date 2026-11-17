@@ -98,7 +98,10 @@ fn parity_cli_compares_subset_without_destructive_action() {
         fake_state_server(r#"{"agents":[{"id":"omp","status":"bekerja"}]}"#);
     let (candidate, candidate_thread) =
         fake_state_server(r#"{"agents":[{"id":"agent:omp","status":"bekerja"}]}"#);
-    let aliases = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/parity/aliases.json");
+    let aliases = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/parity/aliases.json"
+    );
     let output = Command::new(env!("CARGO_BIN_EXE_rizal-agent-hq"))
         .args([
             "parity",
@@ -123,7 +126,10 @@ fn parity_cli_compares_subset_without_destructive_action() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["verdict"], "PASS");
     assert_eq!(report["status_match_pct"], 100.0);
-    assert_eq!(report["missing_from_candidate"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["missing_from_candidate"].as_array().unwrap().len(),
+        0
+    );
     oracle_thread.join().unwrap();
     candidate_thread.join().unwrap();
 }

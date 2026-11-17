@@ -1,7 +1,7 @@
-use crate::probes::{run_timeout, ProcessInfo};
+use crate::probes::{ProcessInfo, run_timeout};
 use hq_core::{
-    redact_text, AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId,
-    Status, Subject, UsageScope,
+    AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId, Status, Subject,
+    UsageScope, redact_text,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -270,11 +270,7 @@ pub fn omp_status(
     }
 }
 
-fn omp_agent_event(
-    processes: &[&ProcessInfo],
-    observed: OmpActivity,
-    now_ms: i64,
-) -> EventDraft {
+fn omp_agent_event(processes: &[&ProcessInfo], observed: OmpActivity, now_ms: i64) -> EventDraft {
     EventDraft {
         event_ts_ms: now_ms,
         kind: EventKind::AgentObserved,
@@ -375,9 +371,7 @@ pub fn omp_usage_events(stats: &OmpStats, now_ms: i64) -> Vec<EventDraft> {
         events.push(EventDraft {
             event_ts_ms: now_ms,
             kind: EventKind::QuotaObserved,
-            subject: Subject::Usage(UsageScope::Agent(AgentId(
-                "agent:omp".to_owned(),
-            ))),
+            subject: Subject::Usage(UsageScope::Agent(AgentId("agent:omp".to_owned()))),
             source: SourceId("local".to_owned()),
             correlation_id: None,
             causation_id: None,
