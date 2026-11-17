@@ -160,6 +160,55 @@ async fn ws_last_seq_error_requests_snapshot() {
         .unwrap();
     assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
 }
+#[tokio::test]
+async fn ws_lagged_recovery_requires_snapshot_when_ring_has_partial_history() {
+    use futures::StreamExt;
+
+    let (addr, ing, _dir) = spawn_test_api().await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+
+    let payload = "x".repeat(2048);
+    ing.ingest(
+        (0..2049)
+            .map(|i| {
+                draft(
+                    EventKind::AlertRaised,
+                    Subject::Alert(AlertId(format!("alert-{i}"))),
+                    serde_json::json!({"message": payload}),
+                )
+            })
+            .collect(),
+    )
+    .await
+    .unwrap();
+
+    let snapshot = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while let Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) = ws.next().await {
+            let message: serde_json::Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "snapshot_required" {
+                return Some(message);
+            }
+        }
+        None
+    })
+    .await
+    .expect("WS did not produce a recovery response");
+    assert!(snapshot.is_some(), "WS ended or recovered without a snapshot");
+}
+
+#[tokio::test]
+async fn ws_max_since_cursor_requires_snapshot() {
+    let (addr, _ing, _dir) = spawn_test_api().await;
+    let (mut ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since={}", i64::MAX))
+            .await
+            .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
+}
+
 
 // helpers
 fn agent_observed(agent: &str, status: &str) -> EventDraft {

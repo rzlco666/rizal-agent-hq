@@ -59,17 +59,31 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
         }
     };
 
-    let mut expected = since + 1;
-    let contiguous = missed.iter().all(|event| {
-        let matches = event.seq.0 == expected;
-        expected += 1;
-        matches
-    });
-    let snapshot =
-        since > last_seq || missed.len() > 1000 || !contiguous || expected - 1 != last_seq;
+    let Some(mut expected) = since.checked_add(1) else {
+        send_snapshot_required(&mut sender, last_seq).await;
+        let _ = sender.close().await;
+        return;
+    };
+    let mut contiguous = true;
+    for event in &missed {
+        if event.seq.0 != expected {
+            contiguous = false;
+            break;
+        }
+        let Some(next) = expected.checked_add(1) else {
+            contiguous = false;
+            break;
+        };
+        expected = next;
+    }
+    let snapshot = since > last_seq
+        || missed.len() > 1000
+        || !contiguous
+        || expected.checked_sub(1) != Some(last_seq);
 
     if snapshot {
         send_snapshot_required(&mut sender, last_seq).await;
+        let _ = sender.close().await;
         return;
     }
 
@@ -94,27 +108,60 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
+                    Ok(patch) if patch.seq.0 <= last_sent => continue,
                     Ok(patch) => {
-                        if patch.seq.0 <= last_sent { continue; }
+                        if last_sent.checked_add(1) != Some(patch.seq.0) {
+                            let watermark = store.last_seq().await.map(|seq| seq.0).unwrap_or(patch.seq.0);
+                            send_snapshot_required(&mut sender, watermark).await;
+                            let _ = sender.close().await;
+                            return;
+                        }
                         let _ = sender.send(axum::extract::ws::Message::Text(patch_to_json(&patch).to_string().into())).await;
                         last_sent = patch.seq.0;
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        // recovery via ring or snapshot
-                        let recovered = if let Ok(g) = ring.lock() { g.since(hq_core::Seq(last_sent)) } else { None };
-                        if let Some(patches) = recovered {
-                            for p in patches {
-                                if p.seq.0 <= last_sent { continue; }
-                                let _ = sender.send(axum::extract::ws::Message::Text(patch_to_json(&p).to_string().into())).await;
-                                last_sent = p.seq.0;
+                        let watermark = match store.last_seq().await {
+                            Ok(seq) => seq.0,
+                            Err(_) => {
+                                send_snapshot_required(&mut sender, last_seq).await;
+                                let _ = sender.close().await;
+                                return;
                             }
-                        } else {
-                            let ls = store.last_seq().await.map(|s| s.0).unwrap_or(last_seq);
-                            let _ = sender.send(axum::extract::ws::Message::Text(
-                                json!({"type":"snapshot_required","seq":ls}).to_string().into(),
-                            )).await;
+                        };
+                        let recovered = ring
+                            .lock()
+                            .ok()
+                            .and_then(|g| g.since(hq_core::Seq(last_sent)));
+                        let Some(patches) = recovered else {
+                            send_snapshot_required(&mut sender, watermark).await;
                             let _ = sender.close().await;
                             return;
+                        };
+                        let Some(mut expected) = last_sent.checked_add(1) else {
+                            send_snapshot_required(&mut sender, watermark).await;
+                            let _ = sender.close().await;
+                            return;
+                        };
+                        let mut contiguous = true;
+                        for patch in &patches {
+                            if patch.seq.0 != expected {
+                                contiguous = false;
+                                break;
+                            }
+                            let Some(next) = expected.checked_add(1) else {
+                                contiguous = false;
+                                break;
+                            };
+                            expected = next;
+                        }
+                        if !contiguous || expected.checked_sub(1).is_none_or(|seq| seq < watermark) {
+                            send_snapshot_required(&mut sender, watermark).await;
+                            let _ = sender.close().await;
+                            return;
+                        }
+                        for patch in patches {
+                            let _ = sender.send(axum::extract::ws::Message::Text(patch_to_json(&patch).to_string().into())).await;
+                            last_sent = patch.seq.0;
                         }
                     }
                     Err(_) => break,
@@ -126,6 +173,7 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
         }
     }
 }
+
 
 fn patch_to_json(patch: &Patch) -> serde_json::Value {
     let upserts: Vec<serde_json::Value> = patch

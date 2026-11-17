@@ -68,7 +68,10 @@ pub async fn sse_handler(
                 if event.seq.0 != expected {
                     return false;
                 }
-                expected += 1;
+                let Some(next) = expected.checked_add(1) else {
+                    return false;
+                };
+                expected = next;
             }
             events.len() <= 1000 && expected > last_seq.unwrap_or(cursor)
         });
@@ -89,54 +92,11 @@ pub async fn sse_handler(
         _ => cursor,
     };
 
-    let stream = futures::stream::unfold(
-        (initial_phase, rx, replay_cursor),
-        |(phase, mut rx, cursor)| async move {
-            match phase {
-                Phase::Replay(mut patches) => {
-                    if let Some(p) = patches.pop_front() {
-                        let data = serde_json::to_string(&sse_patch_json(&p)).unwrap_or_default();
-                        let ev = Event::default().id(p.seq.0.to_string()).data(data);
-                        Some((
-                            Ok::<_, Infallible>(ev),
-                            (Phase::Replay(patches), rx, cursor),
-                        ))
-                    } else {
-                        Some((
-                            Ok::<_, Infallible>(Event::default().comment("")),
-                            (Phase::Live, rx, cursor),
-                        ))
-                    }
-                }
-                Phase::Snapshot(seq) => {
-                    let ev = Event::default().data(
-                        serde_json::json!({"type":"snapshot_required","seq":seq}).to_string(),
-                    );
-                    Some((Ok::<_, Infallible>(ev), (Phase::Done, rx, seq)))
-                }
-                Phase::Live => match rx.recv().await {
-                    Ok(patch) if should_skip_live_patch(patch.seq.0, cursor) => Some((
-                        Ok::<_, Infallible>(Event::default().comment("")),
-                        (Phase::Live, rx, cursor),
-                    )),
-                    Ok(patch) if patch.seq.0 != cursor + 1 => {
-                        let ev = Event::default().data(
-                            serde_json::json!({"type":"snapshot_required","seq":patch.seq.0})
-                                .to_string(),
-                        );
-                        Some((Ok::<_, Infallible>(ev), (Phase::Done, rx, patch.seq.0)))
-                    }
-                    Ok(patch) => {
-                        let data =
-                            serde_json::to_string(&sse_patch_json(&patch)).unwrap_or_default();
-                        let ev = Event::default().id(patch.seq.0.to_string()).data(data);
-                        Some((Ok::<_, Infallible>(ev), (Phase::Live, rx, patch.seq.0)))
-                    }
-                    Err(broadcast::error::RecvError::Lagged(_)) | Err(_) => None,
-                },
-                Phase::Done => None,
-            }
-        },
+    let stream = sse_event_stream(
+        state.store,
+        initial_phase,
+        rx,
+        replay_cursor,
     );
 
     Sse::new(stream)
@@ -146,6 +106,88 @@ pub async fn sse_handler(
                 .text("heartbeat"),
         )
         .into_response()
+}
+
+fn sse_event_stream(
+    store: hq_store::Store,
+    initial_phase: Phase,
+    rx: broadcast::Receiver<Patch>,
+    replay_cursor: i64,
+) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+    futures::stream::unfold(
+        (initial_phase, rx, replay_cursor),
+        move |(phase, mut rx, cursor)| {
+            let store = store.clone();
+            async move {
+                match phase {
+                    Phase::Replay(mut patches) => {
+                        if let Some(patch) = patches.pop_front() {
+                            let data = serde_json::to_string(&sse_patch_json(&patch))
+                                .unwrap_or_default();
+                            let event = Event::default().id(patch.seq.0.to_string()).data(data);
+                            Some((
+                                Ok(event),
+                                (Phase::Replay(patches), rx, cursor),
+                            ))
+                        } else {
+                            Some((
+                                Ok(Event::default().comment("")),
+                                (Phase::Live, rx, cursor),
+                            ))
+                        }
+                    }
+                    Phase::Snapshot(seq) => {
+                        let event = snapshot_required_event(seq);
+                        Some((Ok(event), (Phase::Done, rx, seq)))
+                    }
+                    Phase::Live => match rx.recv().await {
+                        Ok(patch) if should_skip_live_patch(patch.seq.0, cursor) => Some((
+                            Ok(Event::default().comment("")),
+                            (Phase::Live, rx, cursor),
+                        )),
+                        Ok(patch) => {
+                            let Some(expected) = cursor.checked_add(1) else {
+                                return Some((
+                                    Ok(snapshot_required_event(patch.seq.0)),
+                                    (Phase::Done, rx, patch.seq.0),
+                                ));
+                            };
+                            if patch.seq.0 != expected {
+                                let watermark = store
+                                    .last_seq()
+                                    .await
+                                    .map(|seq| seq.0)
+                                    .unwrap_or(patch.seq.0);
+                                return Some((
+                                    Ok(snapshot_required_event(watermark)),
+                                    (Phase::Done, rx, watermark),
+                                ));
+                            }
+                            let data = serde_json::to_string(&sse_patch_json(&patch))
+                                .unwrap_or_default();
+                            let event = Event::default().id(patch.seq.0.to_string()).data(data);
+                            Some((Ok(event), (Phase::Live, rx, patch.seq.0)))
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            let watermark = store.last_seq().await.map(|seq| seq.0).unwrap_or(cursor);
+                            Some((
+                                Ok(snapshot_required_event(watermark)),
+                                (Phase::Done, rx, watermark),
+                            ))
+                        }
+                        Err(broadcast::error::RecvError::Closed) => None,
+                    },
+                    Phase::Done => None,
+                }
+            }
+        },
+    )
+}
+
+fn snapshot_required_event(seq: i64) -> Event {
+    Event::default().data(
+        serde_json::json!({"type":"snapshot_required","seq":seq}).to_string(),
+    )
 }
 
 fn sse_patch_json(patch: &Patch) -> serde_json::Value {
@@ -196,5 +238,61 @@ mod tests {
         assert!(should_skip_live_patch(7, 7));
         assert!(should_skip_live_patch(6, 7));
         assert!(!should_skip_live_patch(8, 7));
+    }
+
+    #[tokio::test]
+    async fn production_stream_emits_replay_once_then_contiguous_live_patch() {
+        use super::{Phase, sse_event_stream};
+        use axum::response::IntoResponse;
+        use futures::StreamExt;
+        use std::collections::VecDeque;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = hq_store::Store::open(hq_store::StoreOptions::for_dir(dir.path()))
+            .await
+            .unwrap();
+        let rx = store.patches();
+        let ing = hq_store::Ingestor::new(store.clone());
+        let events = ing
+            .ingest(
+                (1..=2)
+                    .map(|i| hq_core::EventDraft {
+                        event_ts_ms: 1000,
+                        kind: hq_core::EventKind::AgentSeen,
+                        subject: hq_core::Subject::Agent(hq_core::AgentId("agent:muse".into())),
+                        source: hq_core::SourceId("test".into()),
+                        correlation_id: None,
+                        causation_id: None,
+                        idempotency_key: Some(format!("stream-{i}")),
+                        payload: serde_json::json!({"seen_at_ms": 1000}),
+                    })
+                    .collect(),
+            )
+            .await
+            .unwrap()
+            .accepted;
+        let replay = hq_store::patch_for_event(&events[0]);
+        let stream = sse_event_stream(
+            store,
+            Phase::Replay(VecDeque::from([replay])),
+            rx,
+            events[0].seq.0,
+        );
+        let response = super::Sse::new(stream).into_response();
+        let mut body = response.into_body().into_data_stream();
+        let mut bytes = String::new();
+        let mut ids = Vec::new();
+        while let Some(Ok(frame)) = body.next().await {
+            bytes.push_str(&String::from_utf8_lossy(&frame));
+            ids = bytes
+                .lines()
+                .filter_map(|line| line.strip_prefix("id: "))
+                .map(str::to_owned)
+                .collect();
+            if ids.last().is_some_and(|id| id == "2") {
+                break;
+            }
+        }
+        assert_eq!(ids, ["1", "2"], "{bytes}");
     }
 }

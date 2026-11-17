@@ -163,6 +163,46 @@ async fn future_last_event_id_requires_snapshot() {
         "{response}"
     );
 }
+#[tokio::test]
+async fn sse_live_broadcast_lag_emits_snapshot_required() {
+    use futures::StreamExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(StoreOptions::for_dir(dir.path()))
+        .await
+        .unwrap();
+    let ing = Ingestor::new(store.clone());
+    let app = api_router(store, PatchRing::new(1000));
+    let request = Request::builder()
+        .uri("/api/v1/events/stream")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+
+    ing.ingest(
+        (0..1025)
+            .map(|i| heartbeat("agent:muse", &format!("lag-{i}")))
+            .collect(),
+    )
+    .await
+    .unwrap();
+
+    let mut body = response.into_body().into_data_stream();
+    let mut frames = String::new();
+    while let Some(Ok(frame)) = body.next().await {
+        frames.push_str(&String::from_utf8_lossy(&frame));
+        if frames.contains("\"type\":\"snapshot_required\"") {
+            break;
+        }
+    }
+    assert!(
+        frames.contains("\"type\":\"snapshot_required\""),
+        "{frames}"
+    );
+    assert!(frames.contains("\"seq\":1025"), "{frames}");
+}
+
 
 fn heartbeat(agent: &str, key: &str) -> EventDraft {
     EventDraft {
