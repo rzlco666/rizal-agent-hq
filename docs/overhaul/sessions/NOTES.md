@@ -17,3 +17,17 @@
   Node Windows.
 - `cargo-deny` tidak terpasang awalnya; dipasang di `~/.cargo/bin` oleh
   integrator pada 2026-11-17.
+
+## 2026-11-17 — S02 minor (catatan reviewer, tidak memblokir gate)
+
+- Failpoint `test_fail_after_insert` tetap publik (tanpa `#[cfg(test)]`) karena
+  tes integrasi di `tests/append.rs` dan `tests/recovery.rs` memanggilnya;
+  `#[cfg(test)]` pada src/lib.rs tidak aktif saat kompilasi integration test.
+  Failpoint tidak dipanggil di jalur produksi (hanya tes); field `fail_after_insert`
+  di `StoreInner` hanya dibaca di `do_append`. Ini keputusan builder: failpoint
+  = test-only API publik, bukan hidden cfg. Tag s02-done tetap.
+- Rebuild shadow+swap memakai `std::fs::rename`; handle writer thread tetap
+  menunjuk file lama (POSIX rename aman). WAL/shm lama berpotensi yatim pada
+  beban produksi; layak diperbaiki sebelum S03 bila waktu. Tidak memblokir gate.
+- Dependency `sha2 = 0.10` ditambahkan ke hq-store (floor README §2 menyebut
+  sha2 0.10, sesuai). Tidak ada dependency lain di luar kontrak.
