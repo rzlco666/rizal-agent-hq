@@ -19,24 +19,34 @@ pub fn is_public_asset_path(path: &str) -> bool {
 }
 
 fn load(path: &str) -> Option<(Vec<u8>, String)> {
-    let key = if path == "/" || path.is_empty() {
+    let raw = if path == "/" || path.is_empty() {
         "index.html"
     } else {
         path.trim_start_matches('/')
     };
-
-    if let Ok(directory) = std::env::var("HQ_WEB_DIR") {
-        let candidate = std::path::Path::new(&directory).join(key);
-        if candidate.is_file() {
-            let mime = mime_guess::from_path(&candidate)
-                .first_or_octet_stream()
-                .to_string();
-            return std::fs::read(&candidate).ok().map(|bytes| (bytes, mime));
-        }
+    let key = raw.replace('\\', "/");
+    if key.split('/').any(|segment| {
+        segment == "." || segment == ".." || segment.to_ascii_lowercase().contains("%2e")
+    }) {
+        return None;
     }
 
-    UiAssets::get(key).map(|file| {
-        let mime = mime_guess::from_path(key).first_or_octet_stream().to_string();
+    if let Ok(directory) = std::env::var("HQ_WEB_DIR") {
+        let root = std::fs::canonicalize(directory).ok()?;
+        let candidate = std::fs::canonicalize(root.join(&key)).ok()?;
+        if !candidate.starts_with(&root) || !candidate.is_file() {
+            return None;
+        }
+        let mime = mime_guess::from_path(&candidate)
+            .first_or_octet_stream()
+            .to_string();
+        return std::fs::read(&candidate).ok().map(|bytes| (bytes, mime));
+    }
+
+    UiAssets::get(&key).map(|file| {
+        let mime = mime_guess::from_path(&key)
+            .first_or_octet_stream()
+            .to_string();
         (file.data.into_owned(), mime)
     })
 }
@@ -67,7 +77,11 @@ pub async fn serve_asset(uri: Uri) -> Response {
     if let Some((bytes, mime)) = load(path) {
         return response(bytes, mime, path);
     }
-    if path.rsplit('/').next().is_some_and(|segment| segment.contains('.')) {
+    if path
+        .rsplit('/')
+        .next()
+        .is_some_and(|segment| segment.contains('.'))
+    {
         return StatusCode::NOT_FOUND.into_response();
     }
     match load("index.html") {

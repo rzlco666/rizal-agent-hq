@@ -71,7 +71,14 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
+        working-directory: web
         run: corepack pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: API schema parity
+        run: corepack pnpm -C web api:check
+
+      - name: i18n contract
+        run: corepack pnpm -C web check:i18n
 
       - name: Type check
         run: corepack pnpm -C web check
@@ -81,6 +88,12 @@ jobs:
 
       - name: Build
         run: corepack pnpm -C web build
+
+      - name: Bundle budget
+        run: corepack pnpm -C web check:bundle
+
+      - name: Build with embedded web assets
+        run: cargo build --workspace
 
       - name: Upload web build
         uses: actions/upload-artifact@v4

@@ -17,10 +17,11 @@ fn main() {
         );
         exit(1);
     }
-    if !std::fs::read_to_string(&index)
-        .is_ok_and(|html| html.contains("_app/"))
-    {
-        eprintln!("{} has no _app/ asset reference; run `pnpm -C web build`.", index.display());
+    if !std::fs::read_to_string(&index).is_ok_and(|html| html.contains("_app/")) {
+        eprintln!(
+            "{} has no _app/ asset reference; run `pnpm -C web build`.",
+            index.display()
+        );
         exit(1);
     }
 }
