@@ -51,14 +51,15 @@ write_evidence() {
   local stamp="$1"
   local dir="$fixtures/evidence-$stamp"
   mkdir -p "$dir"
-  # ps without command arguments: process names carry evidence, command lines may carry secrets.
-  ps -eo pid,ppid,etime,stat,comm > "$dir/ps.txt" || true
-  omp stats > "$dir/omp-stats.txt" 2>&1 || true
-  tmux ls > "$dir/tmux.txt" 2>&1 || true
-  docker ps > "$dir/docker.txt" 2>&1 || true
-  git -C "$repo_dir" log -1 > "$dir/git.txt" 2>&1 || true
-  find "$HOME/.omp" "$HOME/.cursor" "$HOME/.local/share/opencode" \
-    -maxdepth 3 -type f -name '*.json*' -printf '%p\n' 2>/dev/null \
+  # Komando bukti dibatasi waktu: omp stats dapat menggantung bila runtime sibuk.
+  # Argumen ps sengaja dihilangkan karena dapat memuat secret.
+  timeout 10s ps -eo pid,ppid,etime,stat,comm > "$dir/ps.txt" 2>/dev/null || true
+  timeout 5s omp stats > "$dir/omp-stats.txt" 2>&1 || true
+  timeout 10s tmux ls > "$dir/tmux.txt" 2>&1 || true
+  timeout 10s docker ps > "$dir/docker.txt" 2>&1 || true
+  timeout 10s git -C "$repo_dir" log -1 > "$dir/git.txt" 2>&1 || true
+  timeout 10s find "$HOME/.omp" "$HOME/.cursor" "$HOME/.local/share/opencode" \
+    -maxdepth 2 -type f -name '*.json*' -print 2>/dev/null \
     | head -200 > "$dir/sessions.txt" || true
 }
 
