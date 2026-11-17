@@ -146,6 +146,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/v1/events/stream", get(sse::sse_handler))
         .with_state(state.clone())
+        .fallback(crate::static_assets::serve_asset)
         .layer(middleware::from_fn_with_state(state, auth::auth_middleware))
         .layer(middleware::from_fn(fill_request_id))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))

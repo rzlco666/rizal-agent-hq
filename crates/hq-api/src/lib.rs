@@ -12,6 +12,7 @@ pub mod router;
 pub mod sse;
 pub mod state;
 pub mod ws;
+pub mod static_assets;
 
 pub use router::{api_router, build_router};
 pub use state::AppState;

@@ -54,3 +54,36 @@ jobs:
 
       - name: Verify oracle checksums and fixture counts
         run: bash tools/parity/verify.sh
+
+  web:
+    name: Web · check / test / build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Type check
+        run: corepack pnpm -C web check
+
+      - name: Unit tests
+        run: corepack pnpm -C web test
+
+      - name: Build
+        run: corepack pnpm -C web build
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: web/build/

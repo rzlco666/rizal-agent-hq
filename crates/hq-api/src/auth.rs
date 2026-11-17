@@ -194,7 +194,7 @@ fn is_public(path: &str) -> bool {
     matches!(
         path,
         "/api/v1/auth/pair" | "/api/v1/openapi.json" | "/openapi.json"
-    )
+    ) || crate::static_assets::is_public_asset_path(path)
 }
 
 pub async fn auth_middleware(
