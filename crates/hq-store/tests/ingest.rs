@@ -56,3 +56,16 @@ fn ring_returns_only_newer_patches() {
     assert_eq!(ring.since(Seq(2)).unwrap().len(), 2);
     assert!(ring.since(Seq(0)).is_none());
 }
+
+#[test]
+fn ring_rejects_internal_sequence_hole() {
+    let mut ring = PatchRing::new(3);
+    for seq in [1, 3] {
+        ring.push(Patch {
+            seq: Seq(seq),
+            upserts: vec![],
+            deletes: vec![],
+        });
+    }
+    assert!(ring.since(Seq(1)).is_none());
+}

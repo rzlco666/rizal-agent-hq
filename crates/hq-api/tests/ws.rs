@@ -83,6 +83,84 @@ async fn stale_since_asks_for_snapshot() {
     assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
 }
 
+#[tokio::test]
+async fn ws_agent_disappeared_is_offline() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    let mut draft = agent_observed("agent:omp", "bekerja");
+    draft.kind = EventKind::AgentDisappeared;
+    draft.payload = serde_json::json!({ "disappeared_at_ms": 1000 });
+    ing.ingest(vec![draft]).await.unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let patch = next_json(&mut ws).await;
+    assert_eq!(patch["upserts"][0]["type"], "agent");
+    assert_eq!(patch["upserts"][0]["status"], "offline");
+}
+
+#[tokio::test]
+async fn ws_alert_and_usage_upserts_include_type_and_payload() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.ingest(vec![
+        draft(
+            EventKind::AlertRaised,
+            Subject::Alert(AlertId("alert-1".to_string())),
+            serde_json::json!({"message":"needs review"}),
+        ),
+        draft(
+            EventKind::UsageRecorded,
+            Subject::Usage(UsageScope::Global),
+            serde_json::json!({"tokens":42}),
+        ),
+    ])
+    .await
+    .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+    let alert = next_json(&mut ws).await["upserts"][0].clone();
+    assert_eq!(alert["type"], "alert");
+    assert_eq!(alert["payload"]["message"], "needs review");
+    let usage = next_json(&mut ws).await["upserts"][0].clone();
+    assert_eq!(usage["type"], "usage");
+    assert_eq!(usage["payload"]["tokens"], 42);
+}
+
+fn draft(kind: EventKind, subject: Subject, payload: serde_json::Value) -> EventDraft {
+    EventDraft {
+        event_ts_ms: 1000,
+        kind,
+        subject,
+        source: SourceId("test".to_string()),
+        correlation_id: None,
+        causation_id: None,
+        idempotency_key: None,
+        payload,
+    }
+}
+
+#[tokio::test]
+async fn ws_read_error_requests_snapshot() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.store().test_fail_reads(true);
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
+}
+
+#[tokio::test]
+async fn ws_last_seq_error_requests_snapshot() {
+    let (addr, ing, _dir) = spawn_test_api().await;
+    ing.store().test_fail_last_seq(true);
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
+}
+
 // helpers
 fn agent_observed(agent: &str, status: &str) -> EventDraft {
     EventDraft {

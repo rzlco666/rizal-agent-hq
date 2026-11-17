@@ -42,36 +42,34 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
     // subscribe first to avoid missing appends in the gap
     let mut rx = store.patches();
 
-    let last_seq = store.last_seq().await.map(|s| s.0).unwrap_or(0);
-    let missed = store
-        .read_since(hq_core::Seq(since), 1001)
-        .await
-        .unwrap_or_default();
-
-    // gap / backlog detection
-    let mut snapshot = false;
-    if since > last_seq || missed.len() >= 1000 {
-        snapshot = true;
-    } else if since > 0 {
-        if missed.is_empty() {
-            if since < last_seq {
-                snapshot = true;
-            }
-        } else if missed[0].seq.0 != since + 1 {
-            snapshot = true;
+    let last_seq = match store.last_seq().await {
+        Ok(seq) => seq.0,
+        Err(_) => {
+            send_snapshot_required(&mut sender, since).await;
+            let _ = sender.close().await;
+            return;
         }
-    }
+    };
+    let missed = match store.read_since(hq_core::Seq(since), 1001).await {
+        Ok(events) => events,
+        Err(_) => {
+            send_snapshot_required(&mut sender, last_seq).await;
+            let _ = sender.close().await;
+            return;
+        }
+    };
+
+    let mut expected = since + 1;
+    let contiguous = missed.iter().all(|event| {
+        let matches = event.seq.0 == expected;
+        expected += 1;
+        matches
+    });
+    let snapshot =
+        since > last_seq || missed.len() > 1000 || !contiguous || expected - 1 != last_seq;
 
     if snapshot {
-        let _ = sender
-            .send(axum::extract::ws::Message::Text(
-                json!({"type":"snapshot_required","seq":last_seq})
-                    .to_string()
-                    .into(),
-            ))
-            .await;
-        let _ = sender.close().await;
-        while receiver.next().await.is_some() {}
+        send_snapshot_required(&mut sender, last_seq).await;
         return;
     }
 
@@ -158,4 +156,20 @@ fn patch_to_json(patch: &Patch) -> serde_json::Value {
         "upserts": upserts,
         "deletes": patch.deletes.iter().map(|d| json!({"kind":d.kind,"id":d.id})).collect::<Vec<_>>(),
     })
+}
+
+async fn send_snapshot_required(
+    sender: &mut futures::stream::SplitSink<
+        axum::extract::ws::WebSocket,
+        axum::extract::ws::Message,
+    >,
+    seq: i64,
+) {
+    let _ = sender
+        .send(axum::extract::ws::Message::Text(
+            json!({"type":"snapshot_required","seq":seq})
+                .to_string()
+                .into(),
+        ))
+        .await;
 }

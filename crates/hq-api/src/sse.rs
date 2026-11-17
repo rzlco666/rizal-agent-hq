@@ -21,7 +21,7 @@ pub struct SseQuery {
 }
 
 enum Phase {
-    Replay(Vec<Patch>),
+    Replay(std::collections::VecDeque<Patch>),
     Snapshot(i64),
     Live,
     Done,
@@ -50,47 +50,61 @@ pub async fn sse_handler(
         cursor = n;
     }
 
-    let last_seq = match state.store.last_seq().await {
-        Ok(s) => s.0,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    };
-    let replay_events = match state.store.read_since(hq_core::Seq(cursor), 1001).await {
-        Ok(v) => v,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    };
+    let last_seq = state.store.last_seq().await.map(|s| s.0).ok();
+    let replay_events = state.store.read_since(hq_core::Seq(cursor), 1001).await;
 
-    let truncated = replay_events.len() >= 1000
-        || (cursor == 0 && last_seq > 1000)
-        || (!replay_events.is_empty() && replay_events[0].seq.0 != cursor + 1 && cursor > 0);
+    let replay_last_seq = replay_events
+        .as_ref()
+        .ok()
+        .and_then(|events| events.last().map(|event| event.seq.0))
+        .unwrap_or(cursor);
+    let snapshot_seq = last_seq.unwrap_or(cursor).max(replay_last_seq);
+    let complete = last_seq.is_some_and(|watermark| cursor <= watermark)
+        && replay_events.as_ref().is_ok_and(|events| {
+            let Some(mut expected) = cursor.checked_add(1) else {
+                return false;
+            };
+            for event in events {
+                if event.seq.0 != expected {
+                    return false;
+                }
+                expected += 1;
+            }
+            events.len() <= 1000 && expected > last_seq.unwrap_or(cursor)
+        });
 
-    let replay_patches: Vec<Patch> = replay_events
-        .into_iter()
-        .map(|e| hq_store::patch_for_event(&e))
-        .collect();
-
-    let initial_phase = if truncated {
-        Phase::Snapshot(last_seq)
+    let initial_phase = if complete {
+        Phase::Replay(
+            replay_events
+                .unwrap()
+                .into_iter()
+                .map(|e| hq_store::patch_for_event(&e))
+                .collect(),
+        )
     } else {
-        Phase::Replay(replay_patches)
+        Phase::Snapshot(snapshot_seq)
+    };
+    let replay_cursor = match &initial_phase {
+        Phase::Replay(patches) => patches.back().map_or(cursor, |p| p.seq.0),
+        _ => cursor,
     };
 
     let stream = futures::stream::unfold(
-        (initial_phase, rx, last_seq),
-        |(phase, mut rx, last_seq)| async move {
+        (initial_phase, rx, replay_cursor),
+        |(phase, mut rx, cursor)| async move {
             match phase {
                 Phase::Replay(mut patches) => {
-                    if let Some(p) = patches.first().cloned() {
-                        patches.remove(0);
+                    if let Some(p) = patches.pop_front() {
                         let data = serde_json::to_string(&sse_patch_json(&p)).unwrap_or_default();
                         let ev = Event::default().id(p.seq.0.to_string()).data(data);
                         Some((
                             Ok::<_, Infallible>(ev),
-                            (Phase::Replay(patches), rx, p.seq.0),
+                            (Phase::Replay(patches), rx, cursor),
                         ))
                     } else {
                         Some((
                             Ok::<_, Infallible>(Event::default().comment("")),
-                            (Phase::Live, rx, last_seq),
+                            (Phase::Live, rx, cursor),
                         ))
                     }
                 }
@@ -101,16 +115,24 @@ pub async fn sse_handler(
                     Some((Ok::<_, Infallible>(ev), (Phase::Done, rx, seq)))
                 }
                 Phase::Live => match rx.recv().await {
+                    Ok(patch) if patch.seq.0 <= cursor => Some((
+                        Ok::<_, Infallible>(Event::default().comment("")),
+                        (Phase::Live, rx, cursor),
+                    )),
+                    Ok(patch) if patch.seq.0 != cursor + 1 => {
+                        let ev = Event::default().data(
+                            serde_json::json!({"type":"snapshot_required","seq":patch.seq.0})
+                                .to_string(),
+                        );
+                        Some((Ok::<_, Infallible>(ev), (Phase::Done, rx, patch.seq.0)))
+                    }
                     Ok(patch) => {
                         let data =
                             serde_json::to_string(&sse_patch_json(&patch)).unwrap_or_default();
                         let ev = Event::default().id(patch.seq.0.to_string()).data(data);
                         Some((Ok::<_, Infallible>(ev), (Phase::Live, rx, patch.seq.0)))
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        None // close stream; client reconnects with cursor
-                    }
-                    Err(_) => None,
+                    Err(broadcast::error::RecvError::Lagged(_)) | Err(_) => None,
                 },
                 Phase::Done => None,
             }

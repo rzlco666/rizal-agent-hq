@@ -240,6 +240,10 @@ struct StoreInner {
     broadcast: broadcast::Sender<Patch>,
     #[cfg(any(test, debug_assertions))]
     fail_after_insert: Arc<AtomicBool>,
+    #[cfg(any(test, debug_assertions))]
+    fail_last_seq: Arc<AtomicBool>,
+    #[cfg(any(test, debug_assertions))]
+    fail_read_since: Arc<AtomicBool>,
     integrity_ok: Arc<AtomicBool>,
 }
 enum WriteCmd {
@@ -333,6 +337,10 @@ impl Store {
         let fail_flag = Arc::new(AtomicBool::new(false));
         #[cfg(any(test, debug_assertions))]
         let fail_flag_outer = fail_flag.clone();
+        #[cfg(any(test, debug_assertions))]
+        let fail_last_seq = Arc::new(AtomicBool::new(false));
+        #[cfg(any(test, debug_assertions))]
+        let fail_read_since = Arc::new(AtomicBool::new(false));
         let integrity_flag = Arc::new(AtomicBool::new(false));
         let integrity_flag_outer = integrity_flag.clone();
         let (broadcast_tx, _) = broadcast::channel(1024);
@@ -377,6 +385,10 @@ impl Store {
             broadcast: broadcast_tx,
             #[cfg(any(test, debug_assertions))]
             fail_after_insert: fail_flag_outer.clone(),
+            #[cfg(any(test, debug_assertions))]
+            fail_last_seq,
+            #[cfg(any(test, debug_assertions))]
+            fail_read_since,
             integrity_ok: integrity_flag_outer,
         });
         Ok(Self { inner })
@@ -385,6 +397,16 @@ impl Store {
     #[cfg(any(test, debug_assertions))]
     pub fn test_fail_after_insert(&self, v: bool) {
         self.inner.fail_after_insert.store(v, Ordering::SeqCst);
+    }
+
+    #[cfg(any(test, debug_assertions))]
+    pub fn test_fail_reads(&self, v: bool) {
+        self.inner.fail_read_since.store(v, Ordering::SeqCst);
+    }
+
+    #[cfg(any(test, debug_assertions))]
+    pub fn test_fail_last_seq(&self, v: bool) {
+        self.inner.fail_last_seq.store(v, Ordering::SeqCst);
     }
 
     pub async fn append(&self, drafts: Vec<EventDraft>) -> Result<Vec<Event>, StoreError> {
@@ -416,6 +438,10 @@ impl Store {
     }
 
     pub async fn last_seq(&self) -> Result<Seq, StoreError> {
+        #[cfg(any(test, debug_assertions))]
+        if self.inner.fail_last_seq.load(Ordering::SeqCst) {
+            return Err(StoreError::Pool("injected last_seq failure".to_string()));
+        }
         let pool = self.inner.read_pool.clone();
         tokio::task::spawn_blocking(move || -> Result<Seq, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
@@ -586,6 +612,10 @@ impl Store {
     }
 
     pub async fn read_since(&self, since: Seq, limit: usize) -> Result<Vec<Event>, StoreError> {
+        #[cfg(any(test, debug_assertions))]
+        if self.inner.fail_read_since.load(Ordering::SeqCst) {
+            return Err(StoreError::Pool("injected read_since failure".to_string()));
+        }
         let pool = self.inner.read_pool.clone();
         let since = since.0;
         let limit = limit.min(1000);
