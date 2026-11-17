@@ -133,7 +133,7 @@ async fn mutate(
     let current = state.store.alert(&id).await?.ok_or(ApiError::NotFound)?;
     let now = crate::auth::now_ms();
     let is_snooze = kind == hq_core::EventKind::AlertSnoozed;
-    let until_ms = now + body.minutes.unwrap_or(15).max(0) * 60_000;
+    let until_ms = now.saturating_add(body.minutes.unwrap_or(15).max(0).saturating_mul(60_000));
     // Ack/resolve stay idempotent. A snooze with a different deadline is a new
     // instruction even when the alert is already snoozed.
     let deadline_changed = is_snooze && current.snooze_until_ms != Some(until_ms);

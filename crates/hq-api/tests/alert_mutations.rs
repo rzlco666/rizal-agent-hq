@@ -57,6 +57,19 @@ async fn snooze_and_resolve_move_alert_state() {
 }
 
 #[tokio::test]
+async fn snooze_overflowing_minutes_does_not_panic() {
+    let app = seeded_alert_app().await;
+    let res = post(
+        app.app,
+        "/api/v1/alerts/a1/snooze",
+        serde_json::json!({"minutes": i64::MAX}),
+        loopback(),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
 async fn second_snooze_with_new_deadline_emits_second_event() {
     let app = seeded_alert_app().await;
     let first: serde_json::Value = body_json(
