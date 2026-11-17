@@ -71,6 +71,7 @@
   "today.connection.reconnecting": "正在重新连接…",
   "today.connection.retry": "重试",
   "toast.ack_failed": "无法确认警报。",
+  "toast.snooze_failed": "无法延后警报。",
   "palette.title": "命令",
   "palette.placeholder": "搜索命令或页面",
   "palette.empty": "没有结果",

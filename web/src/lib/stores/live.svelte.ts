@@ -61,6 +61,7 @@ export function createLiveStore(
   refetch?: () => void | Promise<unknown>
 ) {
   let state = $state<LiveState>('connecting');
+  let lastPatch = $state<LiveMessage | null>(null);
   let seq = $state(0);
   let ticket = $state('');
   let attempts = 0;
@@ -105,7 +106,7 @@ export function createLiveStore(
     const params = new URLSearchParams();
     if (ticket) params.set('ticket', ticket);
     params.set('since', String(seq));
-    return `/api/v1/ws?${params.toString()}`;
+    return `/ws?${params.toString()}`;
   }
 
   function disconnect() {
@@ -199,6 +200,7 @@ export function createLiveStore(
       if (bucket) snapshot[bucket].delete(deletion.id);
     }
     seq = patchSeq;
+    lastPatch = message;
   }
 
   function invalidate() {
@@ -301,6 +303,9 @@ export function createLiveStore(
     snapshot,
     get state() {
       return state;
+    },
+    get lastPatch() {
+      return lastPatch;
     },
     get seq() {
       return seq;

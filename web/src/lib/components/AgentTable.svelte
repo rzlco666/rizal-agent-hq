@@ -64,6 +64,7 @@
               <a
                 class="row-link"
                 data-testid="agent-row"
+                data-agent-id={agent.id}
                 href={`/agents/${encodeURIComponent(agent.id)}`}
               >
                 <span class="identity">

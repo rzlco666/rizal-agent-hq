@@ -21,7 +21,7 @@
   import KpiStrip from '$lib/components/KpiStrip.svelte';
   import LedgerChart from '$lib/components/LedgerChart.svelte';
   import PanelError from '$lib/components/PanelError.svelte';
-  import { buildLedgerPoints } from '$lib/components/today';
+  import { buildLedgerPoints, canonicalStatus } from '$lib/components/today';
   import { formatDate } from '$lib/format';
   import { t } from '$lib/i18n';
   import { attention } from '$lib/stores/attention.svelte';
@@ -50,6 +50,14 @@
 
   const tokens = $derived(
     (usage?.total.input_tokens ?? 0) + (usage?.total.output_tokens ?? 0)
+  );
+  const renderedAgents = $derived(
+    agents.map((agent) => {
+      const patched = live.snapshot.agents.get(agent.id);
+      return patched
+        ? { ...agent, status: canonicalStatus(String(patched.status)) }
+        : agent;
+    })
   );
   function ledgerInput(event: EventPage['items'][number]) {
     const payload = event.payload;
@@ -137,13 +145,28 @@
     void loadAll();
   }
 
+  $effect(() => {
+    if (!live.lastPatch || empty) return;
+    const timer = setTimeout(() => void loadAll(), 500);
+    return () => clearTimeout(timer);
+  });
+
   onMount(() => {
+    const forcedOffline = () => live.setOnline(false);
+    const forcedOnline = () => live.setOnline(true);
+    window.addEventListener('hq-offline', forcedOffline);
+    window.addEventListener('hq-online', forcedOnline);
+    const cleanup = () => {
+      window.removeEventListener('hq-offline', forcedOffline);
+      window.removeEventListener('hq-online', forcedOnline);
+    };
     if (empty) {
       loading = false;
-      return;
+      return cleanup;
     }
     void loadAll();
     void live.open();
+    return cleanup;
   });
 </script>
 
@@ -151,13 +174,15 @@
   <title>{t('today.title')} · {t('app.name')}</title>
 </svelte:head>
 
-<section class="page">
+<svelte:window ononline={() => live.setOnline(true)} onoffline={() => live.setOnline(false)} />
+
+<section class="page" data-live-state={live.state}>
   <header class="page-head">
     <h1>{t('today.title')}</h1>
     <span class="meta mono">{formatDate(new Date())}</span>
   </header>
 
-  <ConnectionBanner onretry={() => void live.open()} />
+  <ConnectionBanner state={live.state} onretry={() => void live.open()} />
 
   {#if empty}
     <EmptyToday />
@@ -178,7 +203,7 @@
     {#if failed.agents}
       <PanelError onretry={() => void loadAll()} />
     {:else}
-      <AgentTable {agents} {alerts} {loading} />
+      <AgentTable agents={renderedAgents} {alerts} {loading} />
     {/if}
 
     <div class="ledger-slot">
@@ -189,7 +214,7 @@
           points={ledgerPoints}
           {range}
           summary={t('chart.summary')}
-          status={failed.costs || loading ? 'loading' : 'ready'}
+          status={failed.costs ? 'error' : loading ? 'loading' : 'ready'}
           onrange={changeRange}
           onretry={() => void loadAll()}
         />

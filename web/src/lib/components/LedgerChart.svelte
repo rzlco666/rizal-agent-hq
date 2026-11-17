@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { formatTime } from '$lib/format';
   import { t } from '$lib/i18n';
   import 'uplot/dist/uPlot.min.css';
@@ -61,56 +60,64 @@
     activeIndex = (activeIndex + delta + points.length) % Math.max(1, points.length);
   }
 
-  async function renderPlot() {
-    if (!host || points.length === 0) return;
-    try {
-      const { default: uPlot } = await import('uplot');
-      if (!host) return;
-      plot?.destroy();
-      const plotSeries: uPlot.AlignedData = [series[0], series[1], series[2]];
-      plot = new uPlot(
-        {
-          width: host.clientWidth || 640,
-          height: height - 72,
-          scales: { x: { time: true } },
-          axes: [
-            {
-              stroke: 'var(--ink-10)',
-              grid: { show: false },
-              font: '11px "IBM Plex Mono", monospace',
-              values: (_: unknown, ticks: number[]) =>
-                ticks.map((tick) => formatTime(new Date(tick * 1000)))
-            },
-            {
-              stroke: 'var(--ink-10)',
-              grid: { stroke: 'var(--hairline)', width: 1 },
-              font: '11px "IBM Plex Mono", monospace',
-              values: (_: unknown, ticks: number[]) => ticks.map((tick) => `$${tick.toFixed(2)}`)
-            }
-          ],
-          series: [
-            { label: t('nav.timeline') },
-            { label: t('today.kpi.cash'), stroke: 'var(--attention)', width: 2, points: { show: false } },
-            { label: t('today.kpi.shadow'), stroke: 'var(--ink-10)', width: 1, points: { show: false } }
-          ],
-          legend: { show: false }
-        },
-        plotSeries
-      ) as unknown as Plot;
-      plotReady = true;
-    } catch {
-      plotReady = false;
-    }
-  }
-
-  onMount(() => {
-    void renderPlot();
-    return () => plot?.destroy();
-  });
-
   $effect(() => {
+    const element = host;
     const data = series;
-    if (plot && data[0].length > 0) plot.setData(data);
+    let cancelled = false;
+    let created: Plot | undefined;
+
+    if (!element || status !== 'ready' || data[0].length === 0) {
+      plotReady = false;
+      return;
+    }
+
+    const plotSeries: uPlot.AlignedData = [data[0], data[1], data[2]];
+    void import('uplot')
+      .then(({ default: UPlot }) => {
+        if (cancelled || !element.isConnected) return;
+        created = new UPlot(
+          {
+            width: element.clientWidth || 640,
+            height: height - 72,
+            scales: { x: { time: true } },
+            axes: [
+              {
+                stroke: 'var(--ink-10)',
+                grid: { show: false },
+                font: '11px "IBM Plex Mono", monospace',
+                values: (_: unknown, ticks: number[]) =>
+                  ticks.map((tick) => formatTime(new Date(tick * 1000)))
+              },
+              {
+                stroke: 'var(--ink-10)',
+                grid: { stroke: 'var(--hairline)', width: 1 },
+                font: '11px "IBM Plex Mono", monospace',
+                values: (_: unknown, ticks: number[]) => ticks.map((tick) => `$${tick.toFixed(2)}`)
+              }
+            ],
+            series: [
+              { label: t('nav.timeline') },
+              { label: t('today.kpi.cash'), stroke: 'var(--attention)', width: 2, points: { show: false } },
+              { label: t('today.kpi.shadow'), stroke: 'var(--ink-10)', width: 1, points: { show: false } }
+            ],
+            legend: { show: false }
+          },
+          plotSeries,
+          element
+        ) as unknown as Plot;
+        plot = created;
+        plotReady = true;
+      })
+      .catch(() => {
+        if (!cancelled) plotReady = false;
+      });
+
+    return () => {
+      cancelled = true;
+      created?.destroy();
+      if (plot === created) plot = undefined;
+      plotReady = false;
+    };
   });
 </script>
 

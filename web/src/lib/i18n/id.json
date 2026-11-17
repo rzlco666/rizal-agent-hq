@@ -71,6 +71,7 @@
   "today.connection.reconnecting": "Menyambung ulang…",
   "today.connection.retry": "Coba lagi",
   "toast.ack_failed": "Alert gagal ditandai.",
+  "toast.snooze_failed": "Alert gagal ditunda.",
   "palette.title": "Perintah",
   "palette.placeholder": "Cari perintah atau halaman",
   "palette.empty": "Tidak ada hasil",

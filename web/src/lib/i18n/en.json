@@ -71,6 +71,7 @@
   "today.connection.reconnecting": "Reconnecting…",
   "today.connection.retry": "Try again",
   "toast.ack_failed": "Could not acknowledge the alert.",
+  "toast.snooze_failed": "Could not snooze the alert.",
   "palette.title": "Commands",
   "palette.placeholder": "Search commands or pages",
   "palette.empty": "No results",

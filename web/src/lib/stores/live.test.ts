@@ -102,3 +102,15 @@ describe('live store', () => {
     expect(store.state).toBe('connecting');
   });
 });
+test('exposes the last applied patch so routes can debounce aggregate refetch', () => {
+  const store = createLiveStore(fakeSocket());
+  store.apply({ type: 'hello', seq: 1 });
+  const patch = { type: 'patch' as const, seq: 2, upserts: [], deletes: [] };
+  store.apply(patch);
+  expect(store.lastPatch).toEqual(patch);
+});
+test('reconnect url targets the server ws route', () => {
+  const store = createLiveStore(fakeSocket());
+  store.apply({ type: 'hello', seq: 7 });
+  expect(store.nextUrl()).toMatch(/^\/ws\?/);
+});

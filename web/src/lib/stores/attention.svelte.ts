@@ -66,7 +66,7 @@ class AttentionStore {
       restored.splice(index, 0, previous);
       this.items = restored;
       this.openCount = previousCount;
-      showToast({ tone: 'critical', message: t('toast.ack_failed') });
+      showToast({ tone: 'critical', message: t('toast.snooze_failed') });
     }
   }
 
