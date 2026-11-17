@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import type { Snippet } from 'svelte';
-  import { onMount } from 'svelte';
+
   import { t } from '$lib/i18n';
   import type { PaletteAction } from '$lib/keyboard/palette';
   import { ui } from '$lib/stores/ui.svelte';
@@ -22,7 +22,7 @@
   let { children }: Props = $props();
   let attentionOpen = $state(false);
 
-  const actions: PaletteAction[] = [
+  const actions = $derived.by<PaletteAction[]>(() => [
     ...navItems.map((item) => ({
       id: `navigate-${item.id}`,
       label: t(item.labelKey),
@@ -44,7 +44,7 @@
       keywords: ['bahasa', 'language', 'locale'],
       run: () => { ui.locale = ui.locale === 'id' ? 'en' : 'id'; }
     }
-  ];
+  ]);
 
   function handleShortcut(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
