@@ -17,6 +17,17 @@ impl Clock for WallClock {
 }
 
 pub async fn run(args: &[String]) -> i32 {
+    match args.first().map(String::as_str) {
+        Some("collect") => collect_once(args).await,
+        Some("device") => device(args).await,
+        _ => {
+            eprintln!("usage: rizal-agent-hq <collect|device|openapi> [options]");
+            2
+        }
+    }
+}
+
+async fn collect_once(args: &[String]) -> i32 {
     if args != ["collect", "--once", "--json"] {
         eprintln!("usage: rizal-agent-hq collect --once --json");
         return 2;
@@ -51,6 +62,81 @@ pub async fn run(args: &[String]) -> i32 {
     }
     println!("{output}");
     if probes.all_failed() { 1 } else { 0 }
+}
+
+async fn device(args: &[String]) -> i32 {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let data_dir = data_dir_from(
+        &home,
+        std::env::var_os("HQ_DATA").as_deref(),
+        std::env::var_os("XDG_DATA_HOME").as_deref(),
+    );
+    let Ok(store) = hq_store::Store::open(hq_store::StoreOptions::for_dir(&data_dir)).await else {
+        eprintln!("cannot open data store");
+        return 1;
+    };
+    match args.get(1).map(String::as_str) {
+        Some("add") => {
+            let mut name = "device".to_string();
+            let mut scopes = vec!["read".to_string()];
+            let mut index = 2;
+            while index + 1 < args.len() {
+                match args[index].as_str() {
+                    "--name" => name = args[index + 1].clone(),
+                    "--scope" => scopes = args[index + 1].split(',').map(str::to_string).collect(),
+                    other => {
+                        eprintln!("unknown option: {other}");
+                        return 2;
+                    }
+                }
+                index += 2;
+            }
+            let code = match hq_api::auth::random_code(8) {
+                Ok(code) => code,
+                Err(error) => {
+                    eprintln!("cannot generate pairing code: {error}");
+                    return 1;
+                }
+            };
+            let now = hq_api::auth::now_ms();
+            let record = hq_store::PairingRecord {
+                name,
+                scopes,
+                created_ms: now,
+                expires_ms: now + 600_000,
+            };
+            if store
+                .create_pairing(&hq_api::auth::token_hash(&code), record)
+                .await
+                .is_err()
+            {
+                eprintln!("cannot store pairing code");
+                return 1;
+            }
+            println!("Pairing code: {code}");
+            0
+        }
+        Some("list") => {
+            match store.devices().await {
+                Ok(devices) => {
+                    let views: Vec<hq_api::auth::DeviceView> =
+                        devices.into_iter().map(Into::into).collect();
+                    println!("{}", serde_json::to_string_pretty(&views).unwrap_or_default());
+                    0
+                }
+                Err(_) => {
+                    eprintln!("cannot read devices");
+                    1
+                }
+            }
+        }
+        _ => {
+            eprintln!("usage: rizal-agent-hq device <add|list> [options]");
+            2
+        }
+    }
 }
 
 fn event_json(event: &EventDraft) -> serde_json::Value {

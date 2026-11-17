@@ -9,8 +9,13 @@ name = "rizal-agent-hq"
 path = "src/main.rs"
 
 [dependencies]
+hq-api = { path = "../hq-api" }
 hq-connectors = { path = "../hq-connectors" }
 hq-core = { path = "../hq-core" }
+hq-store = { path = "../hq-store" }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 toml_edit = "0.25"
+
+[dev-dependencies]
+tempfile = "3"

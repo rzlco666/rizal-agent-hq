@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod auth;
 pub mod error;
 pub mod ingest;
 pub mod projections;
@@ -15,13 +16,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, oneshot};
 
+pub use auth::{DeviceRecord, PairingRecord};
 pub use error::StoreError;
 pub use hq_core::*;
 pub use hq_humanize::{Locale, LogLevel, TaskDeriver, TaskProjection, TaskStepProjection};
 pub use ingest::{IngestReport, Ingestor};
 pub use projections::Projector;
 pub use ring::PatchRing;
-
 // ---------- Options ----------
 #[derive(Clone, Debug)]
 pub struct StoreOptions {
@@ -261,6 +262,10 @@ enum WriteCmd {
         opts: RebuildOptions,
         db_path: PathBuf,
         reply: oneshot::Sender<Result<RebuildReport, StoreError>>,
+    },
+    AuthWrite {
+        op: crate::auth::AuthWrite,
+        reply: oneshot::Sender<Result<Option<crate::auth::PairingRecord>, StoreError>>,
     },
 }
 
@@ -991,6 +996,10 @@ fn writer_loop(
                 reply,
             } => {
                 let res = do_rebuild(&mut conn, &projectors, opts, db_path);
+                let _ = reply.send(res);
+            }
+            WriteCmd::AuthWrite { op, reply } => {
+                let res = crate::auth::apply_write(&mut conn, op);
                 let _ = reply.send(res);
             }
         }

@@ -75,6 +75,10 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_legacy))
         .route("/api/v1/health", get(health))
+        .route("/api/v1/auth/pair", axum::routing::post(auth::pair))
+        .route("/api/v1/auth/ws-ticket", axum::routing::post(auth::ws_ticket))
+        .route("/api/v1/devices", get(auth::devices))
+        .route("/api/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
         .route("/ws", get(ws::ws_handler))
         .route("/api/v1/events/stream", get(sse::sse_handler))
         .with_state(state.clone())
@@ -94,6 +98,7 @@ pub fn api_router(store: Store, ring: PatchRing) -> Router {
         ring: Arc::new(Mutex::new(ring)),
         auth: AuthConfig::default(),
         started_at: std::time::Instant::now(),
+        tickets: Default::default(),
     })
 }
 

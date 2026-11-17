@@ -15,6 +15,8 @@ use tokio::sync::broadcast;
 pub struct WsQuery {
     #[serde(default)]
     since: i64,
+    #[serde(default)]
+    ticket: Option<String>,
 }
 
 pub async fn ws_handler(
@@ -28,7 +30,20 @@ pub async fn ws_handler(
     if headers.contains_key("x-forwarded-for") {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    if !addr.ip().is_loopback() {
+    let owner = state.auth.trust_loopback && addr.ip().is_loopback();
+    if let Some(ticket) = q.ticket.as_deref() {
+        let device_id = if owner {
+            None
+        } else {
+            crate::auth::authenticate(&state, &headers)
+                .await
+                .ok()
+                .and_then(|ctx| ctx.device_id)
+        };
+        if !crate::auth::consume_ws_ticket(ticket, device_id.as_ref(), &state) {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    } else if !owner {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     ws.on_upgrade(move |socket| handle_socket(socket, state, q.since))

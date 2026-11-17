@@ -1,4 +1,4 @@
-use crate::auth::AuthConfig;
+use crate::auth::{AuthConfig, TicketStore};
 use hq_store::{PatchRing, Store};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -9,4 +9,5 @@ pub struct AppState {
     pub ring: Arc<Mutex<PatchRing>>,
     pub auth: AuthConfig,
     pub started_at: Instant,
+    pub tickets: TicketStore,
 }

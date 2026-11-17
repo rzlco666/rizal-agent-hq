@@ -799,11 +799,14 @@ name = "hq-api"
 version = "3.0.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "futures",
+ "getrandom 0.3.4",
  "hq-core",
  "hq-store",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -811,6 +814,7 @@ dependencies = [
  "tokio-tungstenite 0.24.0",
  "tower",
  "tower-http",
+ "tracing",
 ]
 
 [[package]]
@@ -870,9 +874,12 @@ version = "3.0.0"
 name = "hq-server"
 version = "3.0.0"
 dependencies = [
+ "hq-api",
  "hq-connectors",
  "hq-core",
+ "hq-store",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml_edit",
 ]
@@ -887,6 +894,7 @@ dependencies = [
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
