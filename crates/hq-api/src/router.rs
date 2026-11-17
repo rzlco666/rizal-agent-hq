@@ -1,15 +1,25 @@
-use crate::health::{HealthState, health};
+use crate::auth::{self, AuthConfig};
+use crate::health::{health, health_legacy};
 use crate::sse;
+use crate::state::AppState;
 use crate::ws;
-use axum::{Router, routing::get};
+use axum::{
+    Json,
+    Router,
+    body::Body,
+    extract::Request,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::get,
+};
 use hq_store::{PatchRing, Store};
-use std::sync::{Arc, Mutex};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub store: Store,
-    pub ring: Arc<Mutex<PatchRing>>,
-}
+use std::sync::{Arc, Mutex};
+use tower_http::{
+    catch_panic::CatchPanicLayer, compression::CompressionLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
+};
 
 fn spawn_patch_forwarder(
     mut rx: tokio::sync::broadcast::Receiver<hq_store::Patch>,
@@ -30,21 +40,61 @@ fn spawn_patch_forwarder(
     })
 }
 
-pub fn api_router(store: Store, ring: PatchRing) -> Router {
-    let state = AppState {
-        store: store.clone(),
-        ring: Arc::new(Mutex::new(ring)),
+/// Fill `request_id` in error envelopes from the request-id header.
+async fn fill_request_id(request: Request, next: Next) -> Response {
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let response = next.run(request).await;
+    let Some(request_id) = request_id else {
+        return response;
     };
-    // forward broadcast patches into ring
-    drop(spawn_patch_forwarder(store.patches(), state.ring.clone()));
+    if !response.status().is_client_error() && !response.status().is_server_error() {
+        return response;
+    }
+    let (parts, body) = response.into_parts();
+    let bytes = axum::body::to_bytes(body, 64 * 1024).await.unwrap_or_default();
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Response::from_parts(parts, Body::from(bytes));
+    };
+    if value.get("code").is_none() || value.get("request_id").is_none() {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+    value["request_id"] = serde_json::json!(request_id);
+    Response::from_parts(parts, Json(value).into_response().into_body())
+}
 
-    let health_state = HealthState { store };
+pub fn build_router(state: AppState) -> Router {
+    drop(spawn_patch_forwarder(
+        state.store.patches(),
+        state.ring.clone(),
+    ));
 
     Router::new()
-        .route("/health", get(health).with_state(health_state))
+        .route("/health", get(health_legacy))
+        .route("/api/v1/health", get(health))
         .route("/ws", get(ws::ws_handler))
         .route("/api/v1/events/stream", get(sse::sse_handler))
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, auth::auth_middleware))
+        .layer(middleware::from_fn(fill_request_id))
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new())
+        .layer(CatchPanicLayer::new())
+}
+
+/// Compatibility constructor used by S03 WS/SSE tests.
+pub fn api_router(store: Store, ring: PatchRing) -> Router {
+    build_router(AppState {
+        store,
+        ring: Arc::new(Mutex::new(ring)),
+        auth: AuthConfig::default(),
+        started_at: std::time::Instant::now(),
+    })
 }
 
 #[cfg(test)]
