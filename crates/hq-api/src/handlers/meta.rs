@@ -52,8 +52,16 @@ pub fn parse_seed_events(value: &Value) -> Result<Vec<EventDraft>, String> {
                 kind: draft.kind,
                 subject: draft.subject,
                 source: draft.source,
-                correlation_id: draft.correlation_id.as_deref().map(parse_event_id).transpose()?,
-                causation_id: draft.causation_id.as_deref().map(parse_event_id).transpose()?,
+                correlation_id: draft
+                    .correlation_id
+                    .as_deref()
+                    .map(parse_event_id)
+                    .transpose()?,
+                causation_id: draft
+                    .causation_id
+                    .as_deref()
+                    .map(parse_event_id)
+                    .transpose()?,
                 idempotency_key: draft.idempotency_key,
                 payload: draft.payload,
             })
@@ -85,7 +93,9 @@ pub async fn dev_events(
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|e| ApiError::BadRequest(format!("invalid JSON: {e}")))?;
     let drafts = parse_seed_events(&value).map_err(ApiError::BadRequest)?;
-    let report = hq_store::Ingestor::new(state.store.clone()).ingest(drafts).await?;
+    let report = hq_store::Ingestor::new(state.store.clone())
+        .ingest(drafts)
+        .await?;
     let seq = state.store.last_seq().await?.0;
     Ok(Json(serde_json::json!({
         "accepted": report.accepted.len(),
