@@ -38,6 +38,38 @@ async fn omp_process_creates_l1_agent() {
 }
 
 #[tokio::test]
+async fn claude_process_uses_canonical_agent_subject() {
+    let ctx = ctx_with_procs(vec![proc("claude", "claude --model x")], 1_000);
+    let events = ProcessPresenceAdapter::default()
+        .observe(&ctx)
+        .await
+        .unwrap();
+    let event = events
+        .iter()
+        .find(|event| event.subject.key() == "agent:claude-code")
+        .unwrap();
+    assert_eq!(event.payload["runtime_key"], "presence:claude");
+    assert_eq!(event.payload["activity"]["params"]["family"], "claude");
+    assert!(event.validate().is_ok());
+}
+
+#[tokio::test]
+async fn gemini_process_uses_canonical_agent_subject() {
+    let ctx = ctx_with_procs(vec![proc("gemini", "gemini cli")], 1_000);
+    let events = ProcessPresenceAdapter::default()
+        .observe(&ctx)
+        .await
+        .unwrap();
+    let event = events
+        .iter()
+        .find(|event| event.subject.key() == "agent:gemini-cli")
+        .unwrap();
+    assert_eq!(event.payload["runtime_key"], "presence:gemini");
+    assert_eq!(event.payload["activity"]["params"]["family"], "gemini");
+    assert!(event.validate().is_ok());
+}
+
+#[tokio::test]
 async fn l1_agent_never_claims_a_task() {
     let ctx = ctx_with_procs(vec![proc("cursor", "cursor")], 1_000);
     let events = ProcessPresenceAdapter::default()

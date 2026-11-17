@@ -65,6 +65,11 @@ fn agent_event(
     status: Status,
     processes: &[&ProcessInfo],
 ) -> EventDraft {
+    let subject_family = match family {
+        "claude" => "claude-code",
+        "gemini" => "gemini-cli",
+        other => other,
+    };
     let mut params = BTreeMap::new();
     params.insert("family".to_owned(), family.to_owned());
     let activity = Sentence {
@@ -84,7 +89,7 @@ fn agent_event(
     EventDraft {
         event_ts_ms: now_ms,
         kind: EventKind::AgentObserved,
-        subject: Subject::Agent(AgentId(format!("agent:{family}"))),
+        subject: Subject::Agent(AgentId(format!("agent:{subject_family}"))),
         source: SourceId("local".to_owned()),
         correlation_id: None,
         causation_id: None,
