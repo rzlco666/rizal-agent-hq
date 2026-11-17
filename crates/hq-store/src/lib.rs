@@ -1,9 +1,10 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod ingest;
 pub mod projections;
+pub mod ring;
 
-use hq_core::*;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, TransactionBehavior, params};
@@ -14,7 +15,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, oneshot};
 
 pub use error::StoreError;
+pub use hq_core::*;
+pub use ingest::{Ingestor, IngestReport};
 pub use projections::Projector;
+pub use ring::PatchRing;
 
 // ---------- Options ----------
 #[derive(Clone, Debug)]
@@ -336,6 +340,23 @@ impl Store {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
             let n: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))?;
             Ok(n as usize)
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
+    }
+
+    pub async fn last_seq(&self) -> Result<Seq, StoreError> {
+        let pool = self.inner.read_pool.clone();
+        tokio::task::spawn_blocking(move || -> Result<Seq, StoreError> {
+            let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+            let n: i64 = conn
+                .query_row("SELECT COALESCE(MAX(seq),0) FROM events", [], |r| r.get(0))
+                .unwrap_or(0);
+            // include archive max
+            let a: i64 = conn
+                .query_row("SELECT COALESCE(MAX(seq),0) FROM events_archive", [], |r| r.get(0))
+                .unwrap_or(0);
+            Ok(Seq(n.max(a)))
         })
         .await
         .map_err(|e| StoreError::Pool(e.to_string()))?
