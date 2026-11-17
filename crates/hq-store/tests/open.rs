@@ -16,3 +16,14 @@ async fn open_applies_schema_and_pragmas() {
     assert!(h.tables.contains(&"usage_minute".to_string()));
     assert_eq!(h.migrations, 1);
 }
+
+#[tokio::test]
+async fn last_seq_propagates_archive_query_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let opts = StoreOptions::for_dir(dir.path());
+    let store = Store::open(opts.clone()).await.unwrap();
+    let conn = rusqlite::Connection::open(&opts.path).unwrap();
+    conn.execute_batch("DROP TABLE events_archive").unwrap();
+
+    assert!(store.last_seq().await.is_err());
+}

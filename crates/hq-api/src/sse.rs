@@ -76,16 +76,14 @@ pub async fn sse_handler(
             events.len() <= 1000 && expected > last_seq.unwrap_or(cursor)
         });
 
-    let initial_phase = if complete {
-        Phase::Replay(
-            replay_events
-                .unwrap()
+    let initial_phase = match (complete, replay_events) {
+        (true, Ok(events)) => Phase::Replay(
+            events
                 .into_iter()
-                .map(|e| hq_store::patch_for_event(&e))
+                .map(|event| hq_store::patch_for_event(&event))
                 .collect(),
-        )
-    } else {
-        Phase::Snapshot(snapshot_seq)
+        ),
+        _ => Phase::Snapshot(snapshot_seq),
     };
     let replay_cursor = match &initial_phase {
         Phase::Replay(patches) => patches.back().map_or(cursor, |p| p.seq.0),

@@ -445,15 +445,13 @@ impl Store {
         let pool = self.inner.read_pool.clone();
         tokio::task::spawn_blocking(move || -> Result<Seq, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
-            let n: i64 = conn
-                .query_row("SELECT COALESCE(MAX(seq),0) FROM events", [], |r| r.get(0))
-                .unwrap_or(0);
+            let n: i64 =
+                conn.query_row("SELECT COALESCE(MAX(seq),0) FROM events", [], |r| r.get(0))?;
             // include archive max
-            let a: i64 = conn
-                .query_row("SELECT COALESCE(MAX(seq),0) FROM events_archive", [], |r| {
+            let a: i64 =
+                conn.query_row("SELECT COALESCE(MAX(seq),0) FROM events_archive", [], |r| {
                     r.get(0)
-                })
-                .unwrap_or(0);
+                })?;
             Ok(Seq(n.max(a)))
         })
         .await

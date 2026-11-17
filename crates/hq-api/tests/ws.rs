@@ -212,6 +212,27 @@ async fn ws_max_since_cursor_requires_snapshot() {
     assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
 }
 
+#[tokio::test]
+async fn ws_client_disconnect_ends_server_connection() {
+    use futures::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let (addr, _ing, _dir) = spawn_test_api().await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws?since=0"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut ws).await["type"], "hello");
+
+    ws.send(Message::Close(None)).await.unwrap();
+    let response = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
+        .await
+        .expect("server did not finish the WebSocket close handshake");
+    assert!(
+        response.is_none() || matches!(response, Some(Ok(Message::Close(_)))),
+        "unexpected disconnect response: {response:?}"
+    );
+}
+
 // helpers
 fn agent_observed(agent: &str, status: &str) -> EventDraft {
     EventDraft {
