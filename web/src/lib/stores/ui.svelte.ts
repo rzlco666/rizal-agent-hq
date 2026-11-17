@@ -8,6 +8,10 @@ function stored<T extends string>(key: string, allowed: readonly T[], fallback: 
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
+export function htmlLang(locale: Locale): string {
+  return locale === 'zh' ? 'zh-Hans' : locale;
+}
+
 class UiStore {
   _theme = $state<Theme>(stored('hq-theme', ['day', 'night', 'system'], 'system'));
   _locale = $state<Locale>(stored('hq-locale', ['id', 'en', 'zh'], 'id'));
@@ -36,7 +40,7 @@ class UiStore {
   set locale(value: Locale) {
     this._locale = value;
     if (typeof localStorage !== 'undefined') localStorage.setItem('hq-locale', value);
-    if (typeof document !== 'undefined') document.documentElement.lang = value;
+    if (typeof document !== 'undefined') document.documentElement.lang = htmlLang(value);
   }
 
   applyDocumentTheme() {
@@ -51,6 +55,7 @@ class UiStore {
 
   init() {
     this.applyDocumentTheme();
+    if (typeof document !== 'undefined') document.documentElement.lang = htmlLang(this.locale);
     if (typeof window === 'undefined') return () => {};
 
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');

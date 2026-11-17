@@ -1,3 +1,4 @@
+import { translate } from '$lib/i18n';
 import type { Locale } from '$lib/stores/ui.svelte';
 
 const tags: Record<Locale, string> = {
@@ -6,11 +7,7 @@ const tags: Record<Locale, string> = {
   zh: 'zh-CN'
 };
 
-const tokenUnits: Record<Locale, string> = {
-  id: 'token',
-  en: 'tokens',
-  zh: '个令牌'
-};
+
 
 export function formatNumber(value: number, locale: Locale = 'id'): string {
   return new Intl.NumberFormat(tags[locale]).format(value);
@@ -37,5 +34,8 @@ export function formatTokens(
           maximumFractionDigits: 1
         }).format(value)
       : formatNumber(value, locale);
-  return { label, title: `${formatNumber(value, locale)} ${tokenUnits[locale]}` };
+  return {
+    label,
+    title: `${formatNumber(value, locale)} ${translate(locale, 'format.tokenUnit')}`
+  };
 }

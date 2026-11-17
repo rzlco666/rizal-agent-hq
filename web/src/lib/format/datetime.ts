@@ -1,5 +1,5 @@
+import { translate } from '$lib/i18n';
 import type { Locale } from '$lib/stores/ui.svelte';
-
 const tags: Record<Locale, string> = {
   id: 'id-ID',
   en: 'en-US',
@@ -33,15 +33,11 @@ export function formatRelative(
   const elapsed = now - date.getTime();
   const minutes = Math.round(elapsed / 60_000);
   if (minutes < 60) {
-    if (locale === 'en') return `${Math.max(0, minutes)} min ago`;
-    if (locale === 'zh') return `${Math.max(0, minutes)} 分钟前`;
-    return `${Math.max(0, minutes)} menit lalu`;
+    return translate(locale, 'format.minutesAgo', { count: Math.max(0, minutes) });
   }
   const hours = Math.round(minutes / 60);
   if (hours < 24) {
-    if (locale === 'en') return `${hours} h ago`;
-    if (locale === 'zh') return `${hours} 小时前`;
-    return `${hours} jam lalu`;
+    return translate(locale, 'format.hoursAgo', { count: hours });
   }
   return formatDate(date, locale);
 }

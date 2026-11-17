@@ -44,7 +44,7 @@
       queueMicrotask(() => {
         const root = document.getElementById(`${uid}-dialog`);
         if (!root) return;
-        if (size === 'confirm') root.querySelector<HTMLElement>('[data-action="cancel"]')?.focus();
+        if (size === 'confirm') root.querySelector<HTMLElement>('button[data-action="cancel"]')?.focus();
         else focusFirst(root);
       });
     } else {
@@ -87,9 +87,11 @@
     <div class="body">{@render children()}</div>
     {#if onconfirm || size === 'confirm'}
       <div class="footer">
-        <div data-action="cancel">
-          <Button variant="secondary" disabled={busy} onclick={onclose}>{t('action.cancel')}</Button>
-        </div>
+        <Button
+          variant="secondary"
+          data-action="cancel"
+          onclick={onclose}
+        >{t('action.cancel')}</Button>
         <Button
           variant={confirmTone}
           data-action="confirm"

@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { t } from '$lib/i18n';
+
   interface TabItem {
     id: string;
     label: string;
@@ -18,7 +20,7 @@
   let {
     tabs,
     value = $bindable(),
-    ariaLabel = 'Tabs',
+    ariaLabel = t('tabs.defaultLabel'),
     onchange,
     children
   }: Props = $props();

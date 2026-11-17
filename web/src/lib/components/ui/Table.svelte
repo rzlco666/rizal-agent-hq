@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { t } from '$lib/i18n';
   import Skeleton from './Skeleton.svelte';
 
   interface Column {
@@ -27,7 +28,7 @@
   let {
     columns,
     rows,
-    caption = 'Tabel',
+    caption = t('table.defaultCaption'),
     rowKey,
     rowHref,
     loading = false,

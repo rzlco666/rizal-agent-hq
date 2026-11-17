@@ -6,7 +6,7 @@
 
   let { children } = $props();
 
-  onMount(() => ui.applyDocumentTheme());
+  onMount(() => ui.init());
 </script>
 
 <AppShell>
