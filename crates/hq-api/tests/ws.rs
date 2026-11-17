@@ -330,6 +330,7 @@ async fn ws_client_disconnect_ends_server_connection() {
 
 // helpers
 fn agent_observed(agent: &str, status: &str) -> EventDraft {
+    let family = agent.strip_prefix("agent:").unwrap_or(agent);
     EventDraft {
         event_ts_ms: 1000,
         kind: EventKind::AgentObserved,
@@ -338,7 +339,16 @@ fn agent_observed(agent: &str, status: &str) -> EventDraft {
         correlation_id: None,
         causation_id: None,
         idempotency_key: None,
-        payload: serde_json::json!({ "observed_at_ms": 1000, "status": status }),
+        payload: serde_json::json!({
+            "observed_at_ms": 1000,
+            "runtime_key": format!("presence:{family}"),
+            "status": status,
+            "kind": "Utama",
+            "activity": { "key": "agent.process_running", "params": { "family": family } },
+            "processes": 1,
+            "cpu_percent": 0.0,
+            "evidence": "L1"
+        }),
     }
 }
 fn heartbeat(agent: &str, key: &str) -> EventDraft {
