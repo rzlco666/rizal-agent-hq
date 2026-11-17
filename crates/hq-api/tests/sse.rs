@@ -1,3 +1,4 @@
+use axum::{body::Body, extract::ConnectInfo, http::Request};
 use hq_api::api_router;
 use hq_core::*;
 use hq_store::*;
@@ -5,6 +6,7 @@ use std::net::SocketAddr;
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tower::ServiceExt;
 
 async fn spawn() -> (SocketAddr, Ingestor, TempDir) {
     let dir = tempfile::tempdir().unwrap();
@@ -173,4 +175,19 @@ fn heartbeat(agent: &str, key: &str) -> EventDraft {
         idempotency_key: Some(key.to_string()),
         payload: serde_json::json!({ "seen_at_ms": 1000 }),
     }
+}
+#[tokio::test]
+async fn sse_rejects_non_loopback_peer() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(StoreOptions::for_dir(dir.path()))
+        .await
+        .unwrap();
+    let app = api_router(store, PatchRing::new(1000));
+    let request = Request::builder()
+        .uri("/api/v1/events/stream")
+        .extension(ConnectInfo(SocketAddr::from(([192, 0, 2, 1], 1234))))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
 }
