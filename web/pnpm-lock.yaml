@@ -17,6 +17,9 @@ importers:
       lucide-svelte:
         specifier: 0.577.0
         version: 0.577.0(svelte@5.57.3)
+      uplot:
+        specifier: 1.6.32
+        version: 1.6.32
     devDependencies:
       '@axe-core/playwright':
         specifier: 4.14.0
@@ -1181,6 +1184,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -2220,6 +2226,8 @@ snapshots:
       punycode: 2.3.1
 
   typescript@5.9.3: {}
+
+  uplot@1.6.32: {}
 
   vite-node@3.2.4(jiti@2.7.0)(lightningcss@1.33.0):
     dependencies:
