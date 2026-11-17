@@ -32,35 +32,23 @@
 - Dependency `sha2 = 0.10` ditambahkan ke hq-store (floor README §2 menyebut
   sha2 0.10, sesuai). Tidak ada dependency lain di luar kontrak.
 
-## 2026-11-17 — BLOCKER S03 setelah dua fix rounds
+## 2026-11-17 — S03 blocker resolved
 
-S03 dihentikan sesuai batas dua siklus perbaikan. Jangan mulai S04 sebelum
-temuan ini diperbaiki, dites RED→GREEN, direview, dan gate S03 lulus.
-
-- Siklus 1: reviewer menemukan PatchRing didorong dua kali dari router dan WS
-  (`068fc7a`, `8bd499f` memperbaiki sumber push dan mapping replay).
-- Siklus 2: `86a86c8` memperbaiki proxy guard WS, subscribe-before-replay WS,
-  event patch, backlog, disconnect, status kebab-case, SSE payload/cursor,
-  ring continuity, dan Axum 0.8; `dd14e93` mengunci Cargo.lock; `23808e4`
-  formatting.
-- Gate lokal terkini: `cargo fmt --all -- --check`, `cargo clippy -p hq-store
-  -p hq-api --all-targets -- -D warnings`, `cargo test -p hq-store -p hq-api`
-  exit 0 (20 passed). Gate hijau tidak menutup kontrak yang belum terpenuhi.
-- Reviewer final (`UnitedNarwhal`) tetap `CHANGES_REQUESTED`:
-  1. `crates/hq-api/src/router.rs:36`: SSE route tidak memakai auth/proxy guard;
-     loopback peer dari reverse proxy dapat membaca stream tanpa kredensial.
-  2. `crates/hq-api/src/sse.rs:37-42`: receiver dibuat sesudah replay (race
-     replay→live); backlog >1000 dan read error bisa terlewat tanpa snapshot.
-  3. `crates/hq-api/src/ws.rs:142-147` dan `sse.rs`: entity patch tidak punya
-     discriminator `type`/bentuk API lengkap, hanya id untuk alert/usage/
-     connector/approval/task.
-  4. `crates/hq-store/src/lib.rs:137-143`: `AgentDisappeared` fallback ke
-     `Status::Bekerja`, bukan Offline/deletion.
-  5. `crates/hq-api/src/ws.rs:46-49`: kegagalan `read_since` ditelan menjadi
-     empty replay; `since=0` bisa hello pada seq terkini tanpa state.
-  6. `crates/hq-api/tests/sse.rs:31-35`: tes endpoint hanya connect/drop TCP;
-     tidak mengirim HTTP atau mengassert SSE. Tes regresi final juga tidak ada
-     untuk proxy, patch Alert/Usage, race, backlog, disconnect, cursor, dan ring
-     gap yang diperbaiki.
-- `docs/overhaul/sessions/S03.md` `## Hasil` dan tag `s03-done` sengaja belum
-  diisi/dibuat. S04 belum dimulai.
+- Temuan final ditutup oleh commits `088ff3b` (bounded SQLite replay),
+  `477ca12` (watermark concurrent write), `a0417bf` (typed event deltas),
+  `bff8e9c` (future SSE cursor watermark), serta follow-up fixes/tests
+  `5cd3369`, `fc9e0b0`, `a062b49`, `ce47da4` dan prior review commits.
+- Full review `EasternStingray` menemukan hanya future-cursor watermark;
+  scoped reviewer `RealisticAntelope` APPROVE setelah `bff8e9c`.
+  Reviewer sebelumnya mengonfirmasi SSE auth/cursor/gap, WS replay/lag/error,
+  PatchRing continuity, task/log/alert event deltas, serta Axum 0.8.
+- Gate integrator pada current code: fmt/clippy/tests `hq-store` + `hq-api`
+  exit 0; 49 passed, 14 suites.
+- RED evidence tercatat pada history S03FinalFix/S03LiveGap/S03BoundedReplay:
+  backlog tepat 1000, lag forwarder/WS, cursor `i64::MAX`, task/log delta,
+  malformed row di luar read limit, archive read error, dan future cursor.
+  Bukti diringkas di `docs/overhaul/evidence/S03.md`.
+- TDD urutan awal memiliki deviasi: tests awal dikomit setelah feature commits;
+  RED/GREEN untuk regressions dan fixes berikutnya dibuktikan dan dicatat.
+- `docs/overhaul/sessions/S03.md` Hasil telah diisi; tag `s03-done` dibuat
+  setelah evidence commit. S04 menjadi sesi berikutnya.
