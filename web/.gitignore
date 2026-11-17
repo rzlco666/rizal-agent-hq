@@ -1,0 +1,8 @@
+node_modules/
+.svelte-kit/
+build/
+.tmp/
+test-results/
+playwright-report/
+blob-report/
+*.log
