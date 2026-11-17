@@ -11,6 +11,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sysinfo = "0.33"
 rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tokio = { workspace = true }
 
 [dev-dependencies]

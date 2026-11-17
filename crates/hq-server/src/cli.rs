@@ -1,12 +1,15 @@
+use hq_connectors::parity::{compare_states, fetch_state, parse_aliases};
 use hq_connectors::probes::Probes;
 use hq_connectors::runtime::{
-    Clock, CollectCtx, ProcessPresenceAdapter, RuntimeAdapter, SystemHealthEmitter,
+    Clock, CollectCtx, CursorAdapter, MuseAdapter, OmpDbAdapter, ProcessPresenceAdapter,
+    RuntimeAdapter, SystemHealthEmitter,
 };
 use hq_core::{EventDraft, EventKind};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 struct WallClock;
 impl Clock for WallClock {
@@ -21,11 +24,12 @@ impl Clock for WallClock {
 pub async fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("collect") => collect_once(args).await,
-        Some("serve") => serve(args).await,
+        Some("parity") => parity(args).await,
         Some("device") => device(args).await,
         Some("openapi") => openapi(args),
+        Some("serve") => serve(args).await,
         _ => {
-            eprintln!("usage: rizal-agent-hq <collect|device|openapi|serve> [options]");
+            eprintln!("usage: rizal-agent-hq <collect|device|openapi|parity|serve> [options]");
             2
         }
     }
@@ -165,12 +169,54 @@ async fn collect_once(args: &[String]) -> i32 {
         processes: probes.processes.clone(),
     };
     let mut events = adapter.observe(&ctx).await.unwrap_or_default();
+    events.extend(
+        OmpDbAdapter::new(home.join(".omp").join("stats.db"))
+            .observe(&ctx)
+            .await
+            .unwrap_or_default(),
+    );
+    events.extend(
+        CursorAdapter::new(home.join(".cursor"))
+            .observe(&ctx)
+            .await
+            .unwrap_or_default(),
+    );
+    events.extend(
+        MuseAdapter::new(&data_dir)
+            .observe(&ctx)
+            .await
+            .unwrap_or_default(),
+    );
     if let Some(health) = SystemHealthEmitter::new(WallClock).observe(&probes) {
         events.push(health);
     }
 
+    let mut agents = Vec::new();
+    let mut seen = HashSet::new();
+    for event in events.iter().rev() {
+        if !matches!(event.kind, EventKind::AgentObserved | EventKind::AgentStatusChanged) {
+            continue;
+        }
+        let id = event.subject.key();
+        if !id.starts_with("agent:") || !seen.insert(id.clone()) {
+            continue;
+        }
+        agents.push(serde_json::json!({
+            "id": id,
+            "status": event.payload.get("status").cloned().unwrap_or_else(|| serde_json::json!("offline")),
+            "evidence": event.payload.get("evidence").cloned().unwrap_or_else(|| serde_json::json!("L1")),
+        }));
+    }
+    agents.sort_by_key(|agent| {
+        agent["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    });
+
     let mut output = serde_json::to_value(&probes).unwrap_or_default();
     if let Some(object) = output.as_object_mut() {
+        object.insert("agents".to_owned(), serde_json::Value::Array(agents));
         object.insert(
             "events".to_owned(),
             serde_json::Value::Array(events.iter().map(event_json).collect()),
@@ -180,6 +226,167 @@ async fn collect_once(args: &[String]) -> i32 {
     if probes.all_failed() { 1 } else { 0 }
 }
 
+
+async fn parity(args: &[String]) -> i32 {
+    let mut oracle: Option<&str> = None;
+    let mut candidate: Option<&str> = None;
+    let mut subset = vec![
+        "omp".to_owned(),
+        "cursor".to_owned(),
+        "muse".to_owned(),
+    ];
+    let mut duration_s = 600_u64;
+    let mut interval_s = 5_u64;
+    let mut aliases_path = "tools/parity/aliases.json".to_owned();
+    let mut out: Option<&str> = None;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--oracle" if index + 1 < args.len() => {
+                oracle = Some(args[index + 1].as_str());
+                index += 2;
+            }
+            "--candidate" if index + 1 < args.len() => {
+                candidate = Some(args[index + 1].as_str());
+                index += 2;
+            }
+            "--subset" if index + 1 < args.len() => {
+                subset = args[index + 1]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                index += 2;
+            }
+            "--duration" if index + 1 < args.len() => {
+                duration_s = args[index + 1].parse().unwrap_or(600);
+                index += 2;
+            }
+            "--interval" if index + 1 < args.len() => {
+                interval_s = args[index + 1].parse().unwrap_or(5).max(1);
+                index += 2;
+            }
+            "--aliases" if index + 1 < args.len() => {
+                aliases_path = args[index + 1].clone();
+                index += 2;
+            }
+            "--out" if index + 1 < args.len() => {
+                out = Some(args[index + 1].as_str());
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return 2;
+            }
+        }
+    }
+    let (Some(oracle_url), Some(candidate_url)) = (oracle, candidate) else {
+        eprintln!(
+            "usage: rizal-agent-hq parity --oracle <url> --candidate <url> \
+             [--subset omp,cursor,muse] [--duration 600] [--interval 5] \
+             [--aliases <path>] [--out <path>]"
+        );
+        return 2;
+    };
+
+    let Ok(alias_text) = std::fs::read_to_string(&aliases_path) else {
+        eprintln!("cannot read aliases: {aliases_path}");
+        return 1;
+    };
+    let Ok(aliases) = parse_aliases(&alias_text) else {
+        eprintln!("cannot parse aliases: {aliases_path}");
+        return 1;
+    };
+    let subset_refs: Vec<&str> = subset.iter().map(String::as_str).collect();
+    let deadline = Instant::now() + Duration::from_secs(duration_s);
+    let mut reports = Vec::new();
+    loop {
+        let sample = match tokio::try_join!(
+            fetch_state(oracle_url),
+            fetch_state(candidate_url)
+        ) {
+            Ok(sample) => sample,
+            Err(error) => {
+                eprintln!("parity fetch failed: {error}");
+                return 1;
+            }
+        };
+        match compare_states(&sample.0, &sample.1, &aliases, &subset_refs).await {
+            Ok(report) => reports.push(report),
+            Err(error) => {
+                eprintln!("parity comparison failed: {error}");
+                return 1;
+            }
+        }
+        if duration_s == 0 || Instant::now() >= deadline {
+            break;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now()).as_secs();
+        tokio::time::sleep(Duration::from_secs(interval_s.min(remaining.max(1)))).await;
+    }
+
+    let mut report = reports.remove(0);
+    let samples = reports.len() + 1;
+    let status_sum: f64 = reports
+        .iter()
+        .map(|sample| sample.status_match_pct)
+        .sum::<f64>()
+        + report.status_match_pct;
+    report.status_match_pct = status_sum / samples as f64;
+    report.usage_diff_pct = reports
+        .iter()
+        .fold(report.usage_diff_pct, |max, sample| {
+            max.max(sample.usage_diff_pct)
+        });
+    report.verdict = if report.missing_from_candidate.is_empty()
+        && report.status_match_pct >= 90.0
+        && report.usage_diff_pct <= 15.0
+    {
+        "PASS"
+    } else {
+        "FAIL"
+    }
+    .to_owned();
+
+    let Ok(json) = serde_json::to_string_pretty(&report) else {
+        eprintln!("cannot serialize parity report");
+        return 1;
+    };
+    println!("{json}");
+    if let Some(path) = out {
+        let mut markdown = format!(
+            "# Parity report\n\n- Verdict: {}\n- Oracle: {oracle_url}\n- Candidate: {candidate_url}\n- Subset: {}\n- Samples: {samples}\n- Status match: {:.1}%\n- Usage diff: {:.2}%\n\n## Coverage\n\n| v3 id | Oracle | Candidate |\n|---|---|---|\n",
+            report.verdict,
+            subset.join(","),
+            report.status_match_pct,
+            report.usage_diff_pct,
+        );
+        for pair in &report.matched {
+            markdown.push_str(&format!(
+                "| {} | {} | {} |\n",
+                pair.id, pair.oracle_status, pair.candidate_status
+            ));
+        }
+        if !report.missing_from_candidate.is_empty() {
+            markdown.push_str(&format!(
+                "\nMissing: {}\n",
+                report.missing_from_candidate.join(", ")
+            ));
+        }
+        if !report.extra_in_candidate.is_empty() {
+            markdown.push_str(&format!(
+                "\nExtra: {}\n",
+                report.extra_in_candidate.join(", ")
+            ));
+        }
+        if std::fs::write(path, markdown).is_err() {
+            eprintln!("cannot write parity report: {path}");
+            return 1;
+        }
+    }
+    if report.verdict == "PASS" { 0 } else { 1 }
+}
 async fn device(args: &[String]) -> i32 {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
