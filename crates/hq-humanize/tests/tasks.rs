@@ -3,7 +3,13 @@ use hq_humanize::{Fact, TaskDeriver, TaskPhase, Verb, humanize};
 use serde_json::json;
 use ulid::Ulid;
 
-fn event(kind: EventKind, subject: Subject, ts: i64, seq: i64, payload: serde_json::Value) -> Event {
+fn event(
+    kind: EventKind,
+    subject: Subject,
+    ts: i64,
+    seq: i64,
+    payload: serde_json::Value,
+) -> Event {
     Event {
         seq: Seq(seq),
         id: EventId(Ulid::default()),
@@ -121,7 +127,11 @@ fn steps_are_unique_ordered_and_capped_at_six() {
     let tasks = TaskDeriver::default().derive(&events);
     assert_eq!(tasks[0].phase, TaskPhase::Gagal);
     assert_eq!(tasks[0].steps.len(), 6);
-    let keys: Vec<_> = tasks[0].steps.iter().map(|s| s.label.key.as_str()).collect();
+    let keys: Vec<_> = tasks[0]
+        .steps
+        .iter()
+        .map(|s| s.label.key.as_str())
+        .collect();
     assert_eq!(
         keys,
         [

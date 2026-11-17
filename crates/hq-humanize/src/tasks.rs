@@ -101,13 +101,16 @@ fn derive_task(
         .find_map(|ev| phase_from_event(&agent, ev))
         .unwrap_or(TaskPhase::Berjalan);
 
-    let title = steps.first().map(|step| step.label.clone()).unwrap_or_else(|| {
-        let mut fact = Fact::new(agent.clone(), Verb::StartedTask);
-        if !session.is_empty() {
-            fact.object = Some(session.clone());
-        }
-        humanize(&fact)
-    });
+    let title = steps
+        .first()
+        .map(|step| step.label.clone())
+        .unwrap_or_else(|| {
+            let mut fact = Fact::new(agent.clone(), Verb::StartedTask);
+            if !session.is_empty() {
+                fact.object = Some(session.clone());
+            }
+            humanize(&fact)
+        });
 
     TaskProjection {
         id: format!("task:{agent}:{session}:{started_ms}"),

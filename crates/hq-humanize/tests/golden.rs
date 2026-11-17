@@ -59,7 +59,11 @@ fn golden_corpus_matches_exactly() {
 #[test]
 fn golden_corpus_covers_all_verbs_and_locales() {
     let rows = corpus_lines();
-    assert!(rows.len() >= 20, "need at least 20 golden rows, got {}", rows.len());
+    assert!(
+        rows.len() >= 20,
+        "need at least 20 golden rows, got {}",
+        rows.len()
+    );
     let mut keys = BTreeMap::new();
     let mut chinese = false;
     let mut long_detail = false;
@@ -72,8 +76,14 @@ fn golden_corpus_covers_all_verbs_and_locales() {
             vec![Locale::Id, Locale::En, Locale::Zh],
             "rendered must carry exactly id/en/zh: {line}"
         );
-        if g.fact.object.as_deref().is_some_and(|s| s.chars().any(|c| c as u32 > 0x7f))
-            || g.fact.detail.as_deref().is_some_and(|s| s.chars().any(|c| c as u32 > 0x7f))
+        if g.fact
+            .object
+            .as_deref()
+            .is_some_and(|s| s.chars().any(|c| c as u32 > 0x7f))
+            || g.fact
+                .detail
+                .as_deref()
+                .is_some_and(|s| s.chars().any(|c| c as u32 > 0x7f))
         {
             chinese = true;
         }
@@ -85,7 +95,10 @@ fn golden_corpus_covers_all_verbs_and_locales() {
         }
     }
     for verb in Verb::ALL {
-        assert!(keys.contains_key(verb.key()), "corpus missing verb {verb:?}");
+        assert!(
+            keys.contains_key(verb.key()),
+            "corpus missing verb {verb:?}"
+        );
     }
     assert!(chinese, "corpus needs a Unicode row");
     assert!(long_detail, "corpus needs a long detail row");

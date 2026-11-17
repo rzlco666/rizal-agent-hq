@@ -1159,3 +1159,61 @@ fn do_rebuild(
         duration_ms: start.elapsed().as_millis() as u64,
     })
 }
+
+use hq_humanize::render;
+pub use hq_humanize::{Locale, LogLevel, TaskDeriver, TaskProjection, TaskStepProjection};
+// ---------- Log read model ----------
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub id: String,
+    pub ts_ms: i64,
+    pub level: LogLevel,
+    pub text: String,
+}
+
+        Box::new(projections::logs::LogProjector),
+        Box::new(projections::tasks::TaskProjector),
+    ]
+    /// Render stored sentence key plus params in the caller's locale.
+    pub async fn logs(
+        &self,
+        agent: &AgentId,
+        locale: Locale,
+        limit: usize,
+    ) -> Result<Vec<LogEntry>, StoreError> {
+        let pool = self.inner.read_pool.clone();
+        let agent = agent.0.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<LogEntry>, StoreError> {
+            let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+            let mut stmt = conn.prepare(
+                "SELECT id, ts_ms, level, sentence_json FROM logs
+                 WHERE agent_id=?1 ORDER BY ts_ms DESC, id DESC LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![agent, limit as i64], |r| {
+                let id: String = r.get(0)?;
+                let ts_ms: i64 = r.get(1)?;
+                let level: String = r.get(2)?;
+                let json: String = r.get(3)?;
+                let sentence: Sentence = serde_json::from_str(&json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        3,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+                Ok(LogEntry {
+                    id,
+                    ts_ms,
+                    level: LogLevel::parse(&level),
+                    text: render(&sentence, locale),
+                })
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
+    }

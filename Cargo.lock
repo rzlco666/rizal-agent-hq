@@ -790,6 +790,13 @@ dependencies = [
 [[package]]
 name = "hq-humanize"
 version = "3.0.0"
+dependencies = [
+ "hq-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "ulid",
+]
 
 [[package]]
 name = "hq-knowledge"
@@ -819,6 +826,7 @@ name = "hq-store"
 version = "3.0.0"
 dependencies = [
  "hq-core",
+ "hq-humanize",
  "insta",
  "r2d2",
  "r2d2_sqlite",

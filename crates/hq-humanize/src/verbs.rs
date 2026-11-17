@@ -77,9 +77,6 @@ impl Verb {
     }
 
     pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|verb| verb.key() == key)
+        Self::ALL.iter().copied().find(|verb| verb.key() == key)
     }
 }

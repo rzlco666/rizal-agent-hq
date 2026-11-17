@@ -18,7 +18,10 @@ fn every_key_renders_in_every_locale() {
             let out = render(&s, loc);
             assert!(!out.is_empty());
             assert_ne!(out, *key, "missing template {key} for {loc:?}");
-            assert!(!out.contains('{'), "unfilled placeholder in {key} for {loc:?}: {out}");
+            assert!(
+                !out.contains('{'),
+                "unfilled placeholder in {key} for {loc:?}: {out}"
+            );
         }
     }
 }
