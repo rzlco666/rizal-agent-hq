@@ -1,0 +1,42 @@
+Syncing session files...
+Synced 2 new entries from 2 files (55737 total)
+
+
+=== AI Usage Statistics ===
+
+Overall:
+  Requests: 3.8K (78 errors)
+  Error Rate: 2.1%
+  Total Tokens: 19M
+  Input Tokens: 15M
+  Output Tokens: 3.2M
+  Cache Rate: 98.0%
+  Cache Savings: 89.5%
+  API-equivalent estimate: $10.01
+  Premium Requests: 1.33
+  Avg Duration: 22.5s
+  Avg TTFT: 3.4s
+  Avg Tokens/s: 42.3
+
+By Model (API-equivalent estimates):
+  gpt-6-luna: 2.6K reqs, $8.83, 98.6% cache rate, 88.7% cache savings
+  beam-free: 462 reqs, $0.0000, 87.5% cache rate, 0.0% cache savings
+  deepseek-v4.1-flash: 446 reqs, $1.18, 96.0% cache rate, 94.1% cache savings
+  hy4-flash-free: 157 reqs, $0.0000, 96.6% cache rate, 0.0% cache savings
+  typesafe/jev-1.14: 59 reqs, $0.0000, 0.0% cache rate, 0.0% cache savings
+  longcat-2.5-free: 18 reqs, $0.0000, 85.8% cache rate, 0.0% cache savings
+  deepseek-v4.1-flash-free: 11 reqs, $0.0000, 0.0% cache rate, 0.0% cache savings
+  anthropic/claude-haiku-4-5: 1 reqs, $0.0000, 0.0% cache rate, 0.0% cache savings
+  anthropic/claude-haiku-5.5: 1 reqs, $0.0000, 0.0% cache rate, 0.0% cache savings
+  anthropic/claude-opus-5: 1 reqs, $0.0000, 0.0% cache rate, 0.0% cache savings
+
+By Folder (API-equivalent estimates):
+  -projects-tracerio: 2.8K reqs, $8.83
+  -projects-rizal-agent-hq: 435 reqs, $1.17
+  /mnt-d-laragon-integra-hris-ksei/: 177 reqs, $0.0000
+  -projects-rizal-agent-hq-v3: 167 reqs, $0.0053
+  -tmp: 128 reqs, $0.0000
+  /mnt-d-laragon-integra-ekin360-dpmptsp-diy/: 57 reqs, $0.0001
+  -rizal-agent-hq: 12 reqs, $0.0000
+  -projects-zen-unlimited: 1 reqs, $0.0000
+

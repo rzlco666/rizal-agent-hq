@@ -1,0 +1,5 @@
+commit f64b729a39a15bbd7d1bb7c6099418f6cc64c6fd
+Author: Syahrizal Hanif <syahrizalhanif@gmail.com>
+Date:   Tue Nov 17 08:24:20 2026 +0700
+
+    fix(workspace): remove stale v2 paths from v3 tree and bound freeze probes

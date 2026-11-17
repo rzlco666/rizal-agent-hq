@@ -1,0 +1,5 @@
+commit b67e951ddd53c4abab4343062532e9452da41dd1
+Author: Syahrizal Hanif <syahrizalhanif@gmail.com>
+Date:   Tue Nov 17 08:39:49 2026 +0700
+
+    fix(s00): bound oracle probes, require parity manifest, record corepack
