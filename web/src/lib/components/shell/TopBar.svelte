@@ -179,7 +179,7 @@
     .route-title,
     .command-trigger span:first-child,
     .connection span:last-child,
-    .theme span {
+    .theme span:not(.sr-only) {
       display: none;
     }
 

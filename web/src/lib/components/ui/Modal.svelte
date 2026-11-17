@@ -42,9 +42,10 @@
       previous = document.activeElement as HTMLElement | null;
       unlock = lockScroll();
       queueMicrotask(() => {
-        if (!dialog) return;
-        if (size === 'confirm') dialog.querySelector<HTMLElement>('[data-action="cancel"]')?.focus();
-        else focusFirst(dialog);
+        const root = document.getElementById(`${uid}-dialog`);
+        if (!root) return;
+        if (size === 'confirm') root.querySelector<HTMLElement>('[data-action="cancel"]')?.focus();
+        else focusFirst(root);
       });
     } else {
       unlock?.();
@@ -56,7 +57,7 @@
   });
 
   function handleKeydown(event: KeyboardEvent) {
-    if (dialog) trapTab(event, dialog);
+    trapTab(event, event.currentTarget as HTMLElement);
     if (event.key === 'Escape' && !busy) {
       event.preventDefault();
       event.stopPropagation();
@@ -68,6 +69,7 @@
 {#if open}
   <div class="scrim" aria-hidden="true"></div>
   <div
+    id={`${uid}-dialog`}
     class="modal"
     data-size={size}
     role="dialog"

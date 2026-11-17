@@ -25,7 +25,10 @@
     if (open) {
       previous = document.activeElement as HTMLElement | null;
       unlock = lockScroll();
-      queueMicrotask(() => panel && focusFirst(panel));
+      queueMicrotask(() => {
+        const root = document.getElementById(`${uid}-dialog`);
+        if (root) focusFirst(root);
+      });
     } else {
       unlock?.();
       unlock = null;
@@ -36,7 +39,7 @@
   });
 
   function handleKeydown(event: KeyboardEvent) {
-    if (panel) trapTab(event, panel);
+    trapTab(event, event.currentTarget as HTMLElement);
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -48,6 +51,7 @@
 {#if open}
   <div class="scrim" aria-hidden="true"></div>
   <div tabindex="-1"
+    id={`${uid}-dialog`}
     class="drawer"
     data-side={side}
     bind:this={panel}

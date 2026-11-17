@@ -21,7 +21,7 @@
   let query = $state('');
   let activeIndex = $state(0);
   let input = $state<HTMLInputElement | undefined>();
-  let dialog = $state<HTMLElement | undefined>();
+
   let previous: HTMLElement | null = null;
   let unlock: (() => void) | null = null;
 
@@ -87,7 +87,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (dialog) trapTab(event, dialog);
+    trapTab(event, event.currentTarget as HTMLElement);
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       move(1);

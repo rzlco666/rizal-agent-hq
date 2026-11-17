@@ -21,7 +21,7 @@
     {#each navItems as item (item.id)}
       {@const active = isActive(page.url.pathname, item.href)}
       <li>
-        <a href={item.href} aria-current={active ? 'page' : undefined} class:active>
+        <a href={item.href} aria-label={link(item)} aria-current={active ? 'page' : undefined} class:active>
           <span class="icon"><item.icon size={16} strokeWidth={1.5} /></span>
           <span class="label">{link(item)}</span>
         </a>

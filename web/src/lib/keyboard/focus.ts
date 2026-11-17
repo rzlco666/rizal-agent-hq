@@ -19,6 +19,7 @@ export function focusFirst(root: HTMLElement) {
 
 export function trapTab(event: KeyboardEvent, root: HTMLElement) {
   if (event.key !== 'Tab') return;
+
   const items = focusableElements(root);
   if (items.length === 0) {
     event.preventDefault();
