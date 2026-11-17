@@ -1,9 +1,17 @@
+use crate::{AgentKind, EvidenceLevel, Sentence, Status};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct AgentObservedPayload {
     pub observed_at_ms: i64,
+    pub runtime_key: String,
+    pub status: Status,
+    pub kind: AgentKind,
+    pub activity: Sentence,
+    pub processes: u32,
+    pub cpu_percent: f64,
+    pub evidence: EvidenceLevel,
 }
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct AgentSeenPayload {
@@ -119,7 +127,12 @@ pub struct KnowledgePromotedPayload {
 }
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct SystemHealthObservedPayload {
-    pub health: String,
+    pub cpu_percent: f64,
+    pub mem_percent: f64,
+    pub disk_percent: f64,
+    pub uptime_secs: u64,
+    pub docker: Vec<serde_json::Value>,
+    pub git: Vec<serde_json::Value>,
 }
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct ConfigChangedPayload {

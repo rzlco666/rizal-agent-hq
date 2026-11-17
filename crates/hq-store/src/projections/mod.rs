@@ -10,6 +10,7 @@ pub trait Projector: Send + Sync {
 
 pub mod agents;
 pub mod alerts;
+pub mod system_health;
 pub mod usage;
 
 pub fn apply_agent(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
@@ -20,4 +21,7 @@ pub fn apply_usage(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
 }
 pub fn apply_alert(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
     alerts::apply(tx, ev)
+}
+pub fn apply_system_health(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {
+    system_health::apply(tx, ev)
 }

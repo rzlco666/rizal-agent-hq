@@ -64,6 +64,12 @@ pub struct Overview {
     pub usage_input_tokens: i64,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SystemHealthReport {
+    pub latest: Option<projections::system_health::SystemHealthSample>,
+    pub history: Vec<projections::system_health::SystemHealthSample>,
+}
+
 // ---------- Usage ----------
 #[derive(Debug, Clone)]
 pub struct UsageTotals {
@@ -313,6 +319,7 @@ fn make_projectors() -> Vec<Box<dyn projections::Projector>> {
         Box::new(projections::agents::AgentProjector),
         Box::new(projections::usage::UsageProjector),
         Box::new(projections::alerts::AlertProjector),
+        Box::new(projections::system_health::SystemHealthProjector),
     ]
 }
 
@@ -733,6 +740,21 @@ impl Store {
                 usage_requests: req,
                 usage_input_tokens: inp,
             })
+        })
+        .await
+        .map_err(|e| StoreError::Pool(e.to_string()))?
+    }
+
+    pub async fn system_health(&self) -> Result<SystemHealthReport, StoreError> {
+        let pool = self.inner.read_pool.clone();
+        tokio::task::spawn_blocking(move || -> Result<SystemHealthReport, StoreError> {
+            let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+            let mut stmt = conn.prepare(
+                "SELECT ts_ms,cpu_percent,mem_percent,disk_percent,uptime_secs,docker_json,git_json,updated_seq FROM system_health ORDER BY ts_ms",
+            )?;
+            let rows = stmt.query_map([], projections::system_health::sample_from_row)?;
+            let history = rows.collect::<Result<Vec<_>, _>>()?;
+            Ok(SystemHealthReport { latest: history.last().cloned(), history })
         })
         .await
         .map_err(|e| StoreError::Pool(e.to_string()))?
