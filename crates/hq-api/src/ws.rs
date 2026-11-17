@@ -142,8 +142,12 @@ fn patch_to_json(patch: &Patch) -> serde_json::Value {
             }),
             PatchEntity::Alert(id, payload) => json!({"type":"alert","id": id, "payload": payload}),
             PatchEntity::Usage(id, payload) => json!({"type":"usage","id": id, "payload": payload}),
-            PatchEntity::Connector(id, payload) => json!({"type":"connector","id": id, "payload": payload}),
-            PatchEntity::Approval(id, payload) => json!({"type":"approval","id": id, "payload": payload}),
+            PatchEntity::Connector(id, payload) => {
+                json!({"type":"connector","id": id, "payload": payload})
+            }
+            PatchEntity::Approval(id, payload) => {
+                json!({"type":"approval","id": id, "payload": payload})
+            }
             PatchEntity::Task(id, payload) => json!({"type":"task","id": id, "payload": payload}),
         })
         .collect();

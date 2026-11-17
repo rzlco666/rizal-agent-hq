@@ -137,9 +137,7 @@ pub fn patch_for_event(ev: &Event) -> Patch {
                 status: Status::Offline,
             }));
         }
-        EventKind::AgentObserved
-        | EventKind::AgentSeen
-        | EventKind::AgentStatusChanged => {
+        EventKind::AgentObserved | EventKind::AgentSeen | EventKind::AgentStatusChanged => {
             let status = ev
                 .draft
                 .payload
@@ -158,24 +156,36 @@ pub fn patch_for_event(ev: &Event) -> Patch {
         | EventKind::AlertAcknowledged
         | EventKind::AlertSnoozed
         | EventKind::AlertResolved => {
-            upserts.push(PatchEntity::Alert(ev.draft.subject.key(), ev.draft.payload.clone()));
+            upserts.push(PatchEntity::Alert(
+                ev.draft.subject.key(),
+                ev.draft.payload.clone(),
+            ));
         }
         EventKind::UsageRecorded | EventKind::QuotaObserved | EventKind::CostEstimated => {
-            upserts.push(PatchEntity::Usage(ev.draft.subject.key(), ev.draft.payload.clone()));
+            upserts.push(PatchEntity::Usage(
+                ev.draft.subject.key(),
+                ev.draft.payload.clone(),
+            ));
         }
         EventKind::ConnectorRegistered
         | EventKind::ConnectorHealthChanged
         | EventKind::ConnectorPollCompleted
         | EventKind::ConnectorAuthFailed
         | EventKind::ConnectorEvent => {
-            upserts.push(PatchEntity::Connector(ev.draft.subject.key(), ev.draft.payload.clone()));
+            upserts.push(PatchEntity::Connector(
+                ev.draft.subject.key(),
+                ev.draft.payload.clone(),
+            ));
         }
         EventKind::ActionRequested
         | EventKind::ActionApproved
         | EventKind::ActionDenied
         | EventKind::ActionExecuted
         | EventKind::ActionFailed => {
-            upserts.push(PatchEntity::Approval(ev.draft.subject.key(), ev.draft.payload.clone()));
+            upserts.push(PatchEntity::Approval(
+                ev.draft.subject.key(),
+                ev.draft.payload.clone(),
+            ));
         }
         _ => {}
     }
