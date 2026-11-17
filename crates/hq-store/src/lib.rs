@@ -16,7 +16,7 @@ use tokio::sync::{broadcast, oneshot};
 
 pub use error::StoreError;
 pub use hq_core::*;
-pub use ingest::{Ingestor, IngestReport};
+pub use ingest::{IngestReport, Ingestor};
 pub use projections::Projector;
 pub use ring::PatchRing;
 
@@ -126,6 +126,60 @@ pub struct Patch {
     pub deletes: Vec<PatchRef>,
 }
 
+pub fn patch_for_event(ev: &Event) -> Patch {
+    use hq_core::EventKind;
+    let mut upserts = Vec::new();
+    match ev.draft.kind {
+        EventKind::AgentObserved
+        | EventKind::AgentSeen
+        | EventKind::AgentStatusChanged
+        | EventKind::AgentDisappeared => {
+            let status = ev
+                .draft
+                .payload
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(status_from_str)
+                .unwrap_or(Status::Bekerja);
+            upserts.push(PatchEntity::Agent(AgentCard {
+                id: ev.draft.subject.key(),
+                name: agent_name(&ev.draft.subject.key()),
+                status,
+            }));
+        }
+        EventKind::AlertRaised
+        | EventKind::AlertUpdated
+        | EventKind::AlertAcknowledged
+        | EventKind::AlertSnoozed
+        | EventKind::AlertResolved => {
+            upserts.push(PatchEntity::Alert(ev.draft.subject.key()));
+        }
+        EventKind::UsageRecorded | EventKind::QuotaObserved | EventKind::CostEstimated => {
+            upserts.push(PatchEntity::Usage(ev.draft.subject.key()));
+        }
+        EventKind::ConnectorRegistered
+        | EventKind::ConnectorHealthChanged
+        | EventKind::ConnectorPollCompleted
+        | EventKind::ConnectorAuthFailed
+        | EventKind::ConnectorEvent => {
+            upserts.push(PatchEntity::Connector(ev.draft.subject.key()));
+        }
+        EventKind::ActionRequested
+        | EventKind::ActionApproved
+        | EventKind::ActionDenied
+        | EventKind::ActionExecuted
+        | EventKind::ActionFailed => {
+            upserts.push(PatchEntity::Approval(ev.draft.subject.key()));
+        }
+        _ => {}
+    }
+    Patch {
+        seq: ev.seq,
+        upserts,
+        deletes: Vec::new(),
+    }
+}
+
 // ---------- Event query ----------
 #[derive(Debug, Clone, Default)]
 pub struct EventQuery {
@@ -231,11 +285,11 @@ fn check_integrity(conn: &Connection) -> bool {
     r == "ok"
 }
 
-fn agent_name(id: &str) -> String {
+pub fn agent_name(id: &str) -> String {
     id.split(':').next_back().unwrap_or(id).to_uppercase()
 }
 
-fn status_from_str(s: &str) -> Status {
+pub fn status_from_str(s: &str) -> Status {
     match s {
         "bekerja" => Status::Bekerja,
         "berpikir" => Status::Berpikir,
@@ -354,7 +408,9 @@ impl Store {
                 .unwrap_or(0);
             // include archive max
             let a: i64 = conn
-                .query_row("SELECT COALESCE(MAX(seq),0) FROM events_archive", [], |r| r.get(0))
+                .query_row("SELECT COALESCE(MAX(seq),0) FROM events_archive", [], |r| {
+                    r.get(0)
+                })
                 .unwrap_or(0);
             Ok(Seq(n.max(a)))
         })
@@ -860,33 +916,9 @@ fn do_append(
             p.apply(&tx, &ev)?;
         }
         // patch
-        let mut upserts = Vec::new();
-        match ev.draft.kind {
-            EventKind::AgentObserved
-            | EventKind::AgentSeen
-            | EventKind::AgentStatusChanged
-            | EventKind::AgentDisappeared => {
-                let status = ev
-                    .draft
-                    .payload
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .map(status_from_str)
-                    .unwrap_or(Status::Bekerja);
-                let card = AgentCard {
-                    id: ev.draft.subject.key(),
-                    name: agent_name(&ev.draft.subject.key()),
-                    status,
-                };
-                upserts.push(PatchEntity::Agent(card));
-            }
-            _ => {}
-        }
-        patches.push(Patch {
-            seq: Seq(seq),
-            upserts,
-            deletes: Vec::new(),
-        });
+        let mut patch = patch_for_event(&ev);
+        patch.seq = Seq(seq);
+        patches.push(patch);
         out_events.push(ev);
     }
     tx.commit()?;
@@ -992,6 +1024,3 @@ fn do_rebuild(
         duration_ms: start.elapsed().as_millis() as u64,
     })
 }
-
-pub fn agent_name(id: &str) -> String {
-pub fn status_from_str(s: &str) -> Status {

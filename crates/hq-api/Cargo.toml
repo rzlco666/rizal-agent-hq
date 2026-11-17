@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 hq-core = { path = "../hq-core" }
 hq-store = { path = "../hq-store" }
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = "0.24"
 futures = "0.3"

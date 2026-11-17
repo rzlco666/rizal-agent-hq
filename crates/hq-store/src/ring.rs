@@ -24,6 +24,12 @@ impl PatchRing {
 
     pub fn since(&self, seq: Seq) -> Option<Vec<Patch>> {
         let idx = self.buf.iter().position(|p| p.seq == seq)?;
-        Some(self.buf.iter().skip(idx + 1).cloned().collect())
+        let rest: Vec<Patch> = self.buf.iter().skip(idx + 1).cloned().collect();
+        for (i, p) in rest.iter().enumerate() {
+            if p.seq.0 != seq.0 + 1 + i as i64 {
+                return None;
+            }
+        }
+        Some(rest)
     }
 }
