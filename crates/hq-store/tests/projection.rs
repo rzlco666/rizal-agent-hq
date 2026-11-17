@@ -62,3 +62,24 @@ async fn read_since_returns_in_seq_order() {
         vec![e[0].seq, e[1].seq]
     );
 }
+
+#[tokio::test]
+async fn read_since_does_not_decode_rows_after_limit() {
+    let (store, dir) = test_store().await;
+    let first = store
+        .append(vec![heartbeat("agent:muse", "first")])
+        .await
+        .unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join("hq.db")).unwrap();
+    conn.execute(
+        "INSERT INTO events (seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,payload) \
+         VALUES (2,'bad',1000,1000,'agent_seen','agent:muse','test',1,X'00')",
+        [],
+    )
+    .unwrap();
+
+    let got = store.read_since(Seq(0), 1).await.unwrap();
+
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].seq, first[0].seq);
+}

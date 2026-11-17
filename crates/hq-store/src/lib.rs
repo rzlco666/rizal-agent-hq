@@ -627,26 +627,19 @@ impl Store {
         let limit = limit.min(1000);
         tokio::task::spawn_blocking(move || -> Result<Vec<Event>, StoreError> {
             let conn = pool.get().map_err(|e| StoreError::Pool(e.to_string()))?;
+            let mut stmt = conn.prepare(
+                "SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload \
+                 FROM events WHERE seq > ?1 \
+                 UNION ALL \
+                 SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload \
+                 FROM events_archive WHERE seq > ?1 \
+                 ORDER BY seq LIMIT ?2",
+            )?;
+            let mut rows = stmt.query(params![since, limit as i64])?;
             let mut out = Vec::new();
-            // events
-            {
-                let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events WHERE seq > ?1")?;
-                let mut rows = stmt.query(params![since])?;
-                while let Some(r) = rows.next()? {
-                    out.push(row_to_event(r)?);
-                }
+            while let Some(row) = rows.next()? {
+                out.push(row_to_event(row)?);
             }
-            // archive
-            {
-                let mut stmt = conn.prepare("SELECT seq,id,event_ts_ms,ingest_ts_ms,kind,subject,source,schema_version,correlation_id,causation_id,idempotency_key,payload FROM events_archive WHERE seq > ?1")?;
-                let mut rows = stmt.query(params![since])?;
-                while let Some(r) = rows.next()? {
-                    out.push(row_to_event(r)?);
-                }
-            }
-            out.sort_by_key(|e| e.seq.0);
-            out.dedup_by_key(|e| e.seq.0);
-            out.truncate(limit);
             Ok(out)
         })
         .await
