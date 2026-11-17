@@ -5,7 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{SinkExt, StreamExt};
-use hq_core::{Event, Status};
+use hq_core::Event;
 use hq_store::Patch;
 use hq_store::PatchEntity;
 use serde::Deserialize;
@@ -34,7 +34,6 @@ pub async fn ws_handler(
 async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, since: i64) {
     let (mut sender, mut receiver) = socket.split();
     let store = state.store.clone();
-    let ring = state.ring.clone();
 
     let last_seq = store.last_seq().await.map(|s| s.0).unwrap_or(0);
     let missed: Vec<hq_store::Event> = store
@@ -74,18 +73,6 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
         ))
         .await;
 
-    if false {
-        let _ = sender
-            .send(axum::extract::ws::Message::Text(
-                json!({"type":"snapshot_required","seq":last_seq}).to_string(),
-            ))
-            .await;
-        // keep connection open for live? test expects only snapshot. Close.
-        let _ = sender.close().await;
-        // drain receiver
-        while receiver.next().await.is_some() {}
-        return;
-    }
 
     // push missed as patches
     let mut last_sent = since;
@@ -97,10 +84,6 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
             ))
             .await;
         last_sent = patch.seq.0;
-        // push to ring
-        if let Ok(mut g) = ring.lock() {
-            g.push(patch);
-        }
     }
 
     // live stream
@@ -114,7 +97,6 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
                         if patch.seq.0 <= last_sent { continue; }
                         let _ = sender.send(axum::extract::ws::Message::Text(patch_to_json(&patch).to_string())).await;
                         last_sent = patch.seq.0;
-                        if let Ok(mut g) = ring.lock() { g.push(patch); }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,
@@ -140,11 +122,11 @@ fn event_to_patch(ev: &Event) -> Patch {
                 .payload
                 .get("status")
                 .and_then(|v| v.as_str())
-                .map(Status::from_str_lossy)
-                .unwrap_or(Status::Bekerja);
+                .map(hq_store::status_from_str)
+                .unwrap_or(hq_core::Status::Bekerja);
             let card = hq_store::AgentCard {
                 id: ev.draft.subject.key(),
-                name: ev.draft.subject.key(),
+                name: hq_store::agent_name(&ev.draft.subject.key()),
                 status,
             };
             upserts.push(PatchEntity::Agent(card));
@@ -177,19 +159,3 @@ fn patch_to_json(patch: &Patch) -> serde_json::Value {
         "deletes": patch.deletes.iter().map(|d| json!({"kind":d.kind,"id":d.id})).collect::<Vec<_>>(),
     })
 }
-
-// helper trait
-trait StatusExt {
-    fn from_str_lossy(s: &str) -> Status;
-}
-impl StatusExt for Status {
-    fn from_str_lossy(s: &str) -> Status {
-        match s {
-            "bekerja" => Status::Bekerja,
-            "error" => Status::Error,
-            _ => Status::Bekerja,
-        }
-    }
-}
-
-// unused helpers to satisfy compiler
