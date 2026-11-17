@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rizal Agent HQ — Kantor Virtual Agent</title>
+<link rel="icon" href="logo.svg">
+<style>
+  :root{
+    --bg:#eceef1; --card:#ffffff; --card2:#f6f7f9; --line:#e2e5ea; --line2:#eef0f3;
+    --txt:#1c2434; --mut:#7c8698; --mut2:#9aa3b2;
+    --green:#1db877; --blue:#4a7dff; --indigo:#4f46e5; --yellow:#e6a817; --orange:#f07f13; --red:#e5484d; --grey:#9aa7ba;
+    --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 30px rgba(16,24,40,.07);
+    --r-lg:20px; --r-md:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,"Segoe UI",sans-serif;overflow:hidden;
+       -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .mut{color:var(--mut)} .small{font-size:12px}
+  button{font-family:inherit;transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+  .ic{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2.5px;flex-shrink:0}
+  #app{display:flex;flex-direction:column;height:100vh}
+
+  /* ================= header — flat, satu garis, tanpa kartu melayang ================= */
+  header{display:flex;align-items:center;gap:16px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);z-index:30;flex-wrap:nowrap}
+  .brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0}
+  .brand img{width:30px;height:30px;border-radius:8px}
+  .brand h1{font-size:13.5px;margin:0;line-height:1.15;letter-spacing:.05em;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:7px}
+  .ver{font-size:9.5px;font-weight:700;color:var(--indigo);background:#eef2ff;border-radius:99px;padding:1px 7px;letter-spacing:.04em}
+  #clock{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:430px;line-height:1.2}
+  .pillnav{display:flex;gap:2px;background:#eef0f3;border-radius:99px;padding:3px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .pillnav::-webkit-scrollbar{display:none}
+  .pillnav button{background:transparent;border:none;color:#55617a;border-radius:99px;padding:6px 12px;cursor:pointer;
+                  font-size:12.5px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  .pillnav button:hover{color:var(--txt)}
+  .pillnav button.on{background:#fff;color:var(--indigo);box-shadow:0 1px 3px rgba(16,24,40,.14)}
+  header .sp{flex:1;min-width:6px}
+  .hstatus{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  #wsState{font-size:11.5px;color:var(--mut);white-space:nowrap;display:inline-flex;align-items:center}
+  .wsdot{width:8px;height:8px;border-radius:99px;display:inline-block;margin-right:6px;background:#c3cad4}
+  .wsdot.on{background:var(--green);animation:pulse 2.2s infinite}
+  .wsdot.warn{background:var(--yellow)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(29,184,119,.45)}70%{box-shadow:0 0 0 6px rgba(29,184,119,0)}100%{box-shadow:0 0 0 0 rgba(29,184,119,0)}}
+  .badge{background:#fdf0f0;color:#c23338;border:1px solid #f3c2c4;border-radius:99px;padding:5px 11px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .badge.zero{background:#fff;color:var(--mut);border-color:var(--line)}
+  #ageEl{white-space:nowrap;color:var(--mut2)}
+  .langsw{display:flex;gap:2px;background:#eef0f3;border-radius:99px;padding:2px}
+  .langsw button{border:none;background:transparent;border-radius:99px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#64748b;cursor:pointer}
+  .langsw button.on{background:#fff;color:var(--txt);box-shadow:0 1px 3px rgba(16,24,40,.14)}
+  #searchBox{background:#f3f4f6;border:1px solid transparent;border-radius:99px;padding:7px 14px;font-size:12.5px;width:172px;color:var(--txt)}
+  #searchBox:focus{outline:none;background:#fff;border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+
+  /* ================= main grid — semua panel DOCKED ================= */
+  #main{position:relative;flex:1;min-height:0;display:grid;gap:12px;padding:12px 16px 16px;
+        grid-template-columns:minmax(0,1fr) 350px;
+        grid-template-rows:minmax(0,1fr) 240px;
+        grid-template-areas:"stage panel" "dock panel"}
+  #main.railHidden{grid-template-columns:minmax(0,1fr) 0px}
+  #main.railHidden #panel{display:none}
+  #main.dockCollapsed{grid-template-rows:minmax(0,1fr) 45px}
+  #main.dockCollapsed .dbody{display:none}
+  #main.dockCollapsed #dockToggle svg{transform:rotate(180deg)}
+
+  /* ---------- panggung 3D ---------- */
+  #stageCard{grid-area:stage;position:relative;border-radius:var(--r-lg);overflow:hidden;background:#efe9dc;
+             border:1px solid var(--line);box-shadow:var(--shadow);min-height:0}
+  #stage{position:absolute;inset:0}
+  #stage canvas{display:block}
+  #labels{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:4}
+  .alabel{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;background:rgba(255,255,255,.96);
+          border:1px solid var(--line);border-radius:10px;padding:4px 9px 5px;font-size:11px;font-weight:600;color:var(--txt);
+          white-space:nowrap;box-shadow:0 4px 14px rgba(16,24,40,.13);line-height:1.3;max-width:196px}
+  .alabel .nm{display:block;overflow:hidden;text-overflow:ellipsis;max-width:178px}
+  .alabel i{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:5px;vertical-align:1px}
+  .alabel small{display:block;font-weight:500;color:var(--mut);font-size:9.5px}
+  .alabel .rolepill{display:inline-block;background:#eef2ff;color:#4338ca;border-radius:6px;padding:1px 6px;font-size:9px;font-weight:600;margin-top:2px;max-width:178px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .alabel .act{display:block;max-width:168px;overflow:hidden;text-overflow:ellipsis;background:#eef2ff;color:#4338ca;
+               border-radius:6px;padding:1px 6px;font-size:9px;font-weight:600;margin-top:2px}
+  .alabel.sel{border-color:var(--indigo);box-shadow:0 0 0 2px rgba(79,70,229,.35),0 8px 20px rgba(16,24,40,.18);z-index:6}
+  #bubbleTip{position:absolute;pointer-events:none;background:rgba(255,255,255,.98);border:1px solid var(--line);border-radius:12px;
+             padding:8px 11px;max-width:300px;font-size:12.5px;display:none;z-index:9;box-shadow:var(--shadow)}
+  #stageBar{position:absolute;top:12px;left:12px;display:flex;gap:8px;z-index:6;align-items:center}
+  .segctl{display:flex;gap:2px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:99px;padding:3px;backdrop-filter:blur(6px)}
+  .segctl button{background:transparent;border:none;border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;display:inline-flex;align-items:center;gap:6px}
+  .segctl button:hover{color:var(--txt);background:#fff}
+  #btnPanel{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;backdrop-filter:blur(6px);display:inline-flex;align-items:center;gap:6px}
+  #btnPanel:hover{border-color:#a5b4fc;color:var(--txt)}
+  #hint{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.82);border:1px solid var(--line);border-radius:99px;
+        padding:5px 13px;font-size:11px;color:var(--mut);z-index:5;white-space:nowrap;backdrop-filter:blur(6px)}
+  @media (max-width:1380px){#hint{display:none}}
+  #grid2d{display:none;position:absolute;inset:0;overflow:auto;padding:58px 14px 64px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;z-index:3;background:#efe9dc;align-content:start}
+  .card2d{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:11px;cursor:pointer}
+  .card2d:hover{border-color:var(--blue)}
+  .mono{display:inline-flex;width:30px;height:30px;border-radius:9px;color:#fff;font-weight:800;align-items:center;justify-content:center;font-size:14px;vertical-align:-7px;margin-right:7px}
+  .mono.sm{width:22px;height:22px;font-size:11px;border-radius:7px;vertical-align:-5px;margin-right:6px}
+
+  /* ---------- SATU bar kontrol bawah panggung: jeda · reset kamera · zona ---------- */
+  #stageCtl{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;z-index:8;display:flex;align-items:center;gap:2px;
+            background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:99px;padding:4px;box-shadow:var(--shadow);
+            backdrop-filter:blur(6px);max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
+  #stageCtl::-webkit-scrollbar{display:none}
+  .ctlbtn{background:transparent;border:none;border-radius:99px;width:34px;height:30px;cursor:pointer;color:#55617a;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ctlbtn:hover{background:var(--card2);color:var(--txt)}
+  .ctlbtn.on{background:#eef2ff;color:var(--indigo)}
+  .ctlsep{width:1px;height:20px;background:var(--line);margin:0 5px;flex-shrink:0}
+  .zones{display:flex;gap:2px}
+  .zones button{background:transparent;border:none;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#55617a;white-space:nowrap}
+  .zones button i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
+  .zones button .zcount{background:#eef2f7;border-radius:99px;padding:0 7px;color:var(--mut);font-size:11px;margin-left:4px}
+  .zones button.on .zcount{background:rgba(255,255,255,.25);color:#fff}
+  .zones button.empty{opacity:.45}
+  .perfTop{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .perfTop select,.perfTop input{border:1px solid var(--line);border-radius:99px;padding:7px 13px;font-size:12.5px;background:#fff;color:var(--txt)}
+  .perfTop input{flex:1;min-width:220px}
+  .perfDonut{display:flex;gap:22px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;margin-bottom:14px;flex-wrap:wrap}
+  .perfDonut .num{font-size:26px;font-weight:800;line-height:1}
+  .perfCounts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;flex:1}
+  .perfCounts div{background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:8px 11px;font-size:12.5px}
+  .perfCounts b{display:block;font-size:17px}
+  .perfCounts i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px}
+  .zones button:hover{color:var(--txt);background:var(--card2)}
+  .zones button.on{background:var(--indigo);color:#fff}
+
+  /* ---------- rel kanan ---------- */
+  aside#panel{grid-area:panel;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding-right:2px;min-height:0}
+  .pcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:15px 16px}
+  .pcard h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut2);margin:0 0 11px;font-weight:800;display:flex;align-items:center;gap:7px}
+  .pcard h2 .ic{width:14px;height:14px}
+  .kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kpi div{background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:9px 11px}
+  .kpi b{font-size:17px;display:block;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .kpi span{color:var(--mut);font-size:11px;line-height:1.35;display:block;margin-top:1px}
+  .alertCard{background:#fff5f5;border:1px solid #f6c6c8;border-left:4px solid var(--red);border-radius:12px;padding:10px 12px;margin:8px 0}
+  .alertCard.warn{background:#fff9e8;border-color:#ecd28a;border-left-color:var(--yellow)}
+  .alertCard.act{background:#fff4e8;border-color:#f2c193;border-left-color:var(--orange)}
+  .alertCard b{font-size:13px}
+  .alertCard .needs{color:#5a6a86;font-size:12.5px;margin:3px 0 6px}
+  .alertCard button{background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:12px}
+  .alertBtns button{white-space:nowrap}
+  .qrow{margin:9px 0}
+  .qrow .top{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+  .qrow .top span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qrow .top b{font-variant-numeric:tabular-nums}
+  .bar{height:6px;background:#e8ecf1;border-radius:99px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--green);border-radius:99px}
+  .bar i.hot{background:var(--yellow)} .bar i.full{background:var(--red)}
+  .envrow{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line2);font-size:12.5px}
+  .envrow:last-child{border-bottom:none}
+  .envrow span{color:var(--mut)} .envrow b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+  .envcommits{margin-top:8px;font-size:12px;color:#4b5568;line-height:1.65}
+
+  /* ---------- dock bawah ---------- */
+  #dock{grid-area:dock;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);
+        padding:10px 16px 12px;min-height:0;display:flex;flex-direction:column}
+  #dock .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;flex:1;min-height:0}
+  .dcol{display:flex;flex-direction:column;min-height:0;min-width:0}
+  .dhead{display:flex;align-items:center;gap:8px;padding:2px 0 7px}
+  .dhead h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut2);margin:0;font-weight:800;display:flex;align-items:center;gap:7px}
+  .dhead h2 .ic{width:14px;height:14px}
+  .dhead .sp{flex:1}
+  .dhead label{font-size:11.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
+  #dockToggle{background:var(--card2);border:1px solid var(--line);border-radius:99px;width:24px;height:24px;cursor:pointer;color:var(--mut);display:inline-flex;align-items:center;justify-content:center}
+  #dockToggle svg{width:13px;height:13px;transition:transform .2s}
+  .dbody{overflow-y:auto;min-height:0;padding-right:4px}
+  .task,.evt{background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:8px 11px;margin:0 0 7px;font-size:12.5px}
+  .task b.ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.8px;line-height:1.4}
+  .pill{border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700;border:1px solid var(--grey);color:var(--mut);white-space:nowrap;flex-shrink:0}
+  .pill.bekerja{border-color:var(--green);color:#0d9668} .pill.berpikir{border-color:var(--blue);color:var(--blue)}
+  .pill.menunggu-rizal{border-color:var(--orange);color:var(--orange)} .pill.selesai{border-color:var(--green);color:#0d9668}
+  .pill.gagal,.pill.error{border-color:var(--red);color:var(--red)} .pill.berjalan{border-color:var(--green);color:#0d9668}
+  .pill.santai{border-color:var(--grey);color:var(--grey)} .pill.offline{border-color:var(--grey);color:var(--grey)}
+  .steps{margin:5px 0 0;padding-left:17px;color:var(--mut);font-size:12px}
+  .steps li.done{color:#0d9668}
+
+  /* ---------- drawer ---------- */
+  #drawer{position:fixed;top:0;right:-480px;width:452px;max-width:94vw;height:100vh;background:rgba(255,255,255,.98);border-left:1px solid var(--line);
+          z-index:60;transition:right .28s cubic-bezier(.32,.72,.28,1);padding:20px;overflow:auto;box-shadow:-18px 0 44px rgba(16,24,40,.16)}
+  #drawer.open{right:0}
+  #drawer h3{margin:2px 0 4px;font-size:18px}
+  #drawerClose{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+  /* Tombol aksi seragam di seluruh HQ (Studio, Performance, drawer): pill putih, bukan tombol default browser */
+  .btn{background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 13px;cursor:pointer;font-size:12.5px;font-weight:600;color:#55617a;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo);background:#eef2ff}
+  .tabs button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:#55617a}
+  .tabs button.on{border-color:var(--indigo);color:var(--indigo);background:#eef2ff}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:5px 10px;font-size:13px}
+  .kv dt{color:var(--mut)} .kv dd{margin:0}
+
+  /* ---------- overlay ---------- */
+  .overlay{position:absolute;inset:0;background:#f3f4f6;z-index:30;padding:20px 22px;overflow:auto;opacity:0;pointer-events:none;
+           transform:translateY(10px);transition:opacity .22s ease,transform .22s ease}
+  .overlay.open{opacity:1;pointer-events:auto;transform:none}
+  .ovHead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .ovHead h2{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
+  .ovHead .sp{flex:1}
+  .ovHead button{background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 13px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+  #boardCols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start}
+  @media (max-width:1100px){#boardCols{grid-template-columns:repeat(2,1fr)}}
+  .bcol{background:#ffffff;border:1px solid var(--line);border-radius:var(--r-md);padding:11px;min-height:160px;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+  .bcol h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between}
+  .bcol h3 span{background:#eef2f7;border-radius:99px;padding:0 8px;color:var(--mut)}
+  .bcard{background:var(--card2);border:1px solid var(--line2);border-radius:11px;padding:8px 10px;margin:7px 0;font-size:12.5px}
+  .bcard b{display:block;margin-bottom:2px}
+  #facBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .fcard{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);padding:13px 15px;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+  .fcard h3{margin:0 0 8px;font-size:13.5px}
+  .fbar{height:7px;background:#e8ecf1;border-radius:99px;overflow:hidden;margin:3px 0 8px}
+  .fbar i{display:block;height:100%;background:var(--blue);border-radius:99px}
+  .fchip{display:inline-block;background:#e9f7ef;border:1px solid #bfe6cf;color:#177245;border-radius:99px;padding:1px 9px;font-size:11.5px;margin:2px 3px 2px 0}
+  .fchip.down{background:#f3f5f8;border-color:var(--line);color:var(--mut)}
+  .fchip.hot{background:#fdecec;border-color:#f3b6b8;color:#b3373c}
+  .bcard,.provCard{transition:transform .15s ease,box-shadow .15s ease}
+  .bcard:hover,.provCard:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(16,24,40,.09)}
+
+  /* ---------- toast ---------- */
+  #toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .toast{background:#1e293b;color:#fff;padding:10px 18px;border-radius:99px;font-size:13.5px;box-shadow:0 10px 30px rgba(15,23,42,.35);animation:tin .25s ease}
+  .toast.err{background:#b91c1c}
+  @keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+
+  /* ---------- model & provider ---------- */
+  .provCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px;margin-bottom:14px}
+  .provCard{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+  .provCard b{font-size:14.5px}
+  .provCard .row{display:flex;justify-content:space-between;font-size:12.5px;color:#64748b;margin-top:3px}
+  table.mtab{width:100%;border-collapse:collapse;font-size:12.8px;background:#fff}
+  table.mtab th{text-align:left;padding:8px 9px;border-bottom:2px solid var(--line);color:#475569;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:#fff}
+  table.mtab td{padding:7px 9px;border-bottom:1px solid #eef2f7;vertical-align:top}
+  table.mtab tr:hover td{background:#f8fafc}
+  .clsTunai{background:#fee2e2;color:#991b1b;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .clsBayangan{background:#e0e7ff;color:#3730a3;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .clsGratis{background:#dcfce7;color:#166534;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700}
+  .shareBar{height:5px;background:#e2e8f0;border-radius:99px;min-width:64px;overflow:hidden}
+  .shareBar i{display:block;height:100%;background:#6366f1;border-radius:99px}
+
+  /* ---------- scrollbars ---------- */
+  *{scrollbar-width:thin;scrollbar-color:#c2cad6 transparent}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c6cedb;border-radius:99px;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:#8fa1ba;border:2px solid transparent;background-clip:content-box}
+
+  /* ---------- mobile / iPhone: header tidak lagi terpotong, nav bisa di-scroll ---------- */
+  @media (max-width:900px){
+    header{flex-wrap:wrap;gap:10px;padding:8px 12px}
+    .brand{flex:1 1 auto}
+    .pillnav{order:3;flex:1 1 100%;min-width:0;overflow-x:auto}
+    .pillnav button{padding:5px 10px;font-size:12px}
+    .hstatus{order:2;flex-wrap:wrap;gap:8px}
+    #wsState{display:none}
+    #searchBox{width:130px}
+    #hint{display:none}
+    .overlay{padding:12px}
+    .tableWrap{overflow-x:auto}
+    table.mtab{min-width:560px}
+    .perfTop{flex-direction:column;align-items:stretch}
+    .perfTop select,.perfTop input{width:100%}
+    .perfDonut{flex-direction:column;align-items:flex-start}
+    #stageCtl{max-width:calc(100% - 16px)}
+  }
+  @media (max-width:480px){
+    .kpi{grid-template-columns:1fr}
+    #searchBox{width:110px}
+  }
+  @media (max-width:1180px){
+    #main{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "dock"}
+    aside#panel{position:fixed;top:64px;right:12px;width:350px;max-width:92vw;max-height:calc(100vh - 84px);z-index:50;
+                background:transparent;display:none}
+    aside#panel.show{display:flex}
+    #ageEl{display:none}
+    #searchBox{width:150px}
+    #clock{display:none}
+  }
+  @media (max-width:900px){#dock .cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-mega" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+    <symbol id="i-kanban" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v6"/><path d="M13 7v10"/><path d="M18 7v4"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7.5h2M13 7.5h2M9 11.5h2M13 11.5h2M9 15.5h2M13 15.5h2"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.2" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8c0-1.1 1.2-1.8 2.2-1.2l11 6.7c.9.6.9 1.9 0 2.5l-11 6.7c-1 .6-2.2-.1-2.2-1.2V4.8z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-focus" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 3.5-5.5"/><path d="M4.6 19a9.5 9.5 0 1 1 14.8 0"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-3.9 4-6 8-6s7.2 2.1 8 6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  </defs>
+</svg>
+<div id="app">
+<header>
+  <div class="brand">
+    <img src="logo.svg" alt="Logo">
+    <div>
+      <h1>RIZAL AGENT HQ <span class="ver">v2.5</span></h1>
+      <div id="clock">memuat…</div>
+    </div>
+  </div>
+  <nav class="pillnav">
+    <button data-zone="semua" class="on"><svg class="ic"><use href="#i-grid"/></svg><span data-i18n="navCtrl">Ruang kendali</span></button>
+    <button id="navMeet"><svg class="ic"><use href="#i-mega"/></svg>Panggil meeting</button>
+    <button id="navStudio"><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="navStudio">Studio</span></button>
+    <button id="navStocks"><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="navStocks">Saham</span></button>
+    <button id="navKnow"><svg class="ic"><use href="#i-list"/></svg><span data-i18n="navKnow">Pengetahuan</span></button>
+    <button id="navPerf"><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="navPerf">Performance</span></button>
+    <button id="navBoard"><svg class="ic"><use href="#i-kanban"/></svg><span data-i18n="navBoard">Papan tugas</span></button>
+    <button id="navFac"><svg class="ic"><use href="#i-building"/></svg><span data-i18n="navFac">Fasilitas</span></button>
+    <button id="navModels"><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="navModels">Model &amp; Provider</span></button>
+    <button data-zone="alert"><svg class="ic"><use href="#i-bell"/></svg><span data-i18n="navAlert">Fokus alert</span></button>
+  </nav>
+  <div class="sp"></div>
+  <div class="hstatus">
+    <span id="wsState"><i class="wsdot"></i>menghubungkan…</span>
+    <button class="badge zero" id="alertBadge" title="Alert aktif"><svg class="ic"><use href="#i-bell"/></svg><span id="alertCount">0</span></button>
+    <span id="ageEl" class="small"></span>
+    <div class="langsw"><button data-lang="id">ID</button><button data-lang="en">EN</button><button data-lang="zh">中文</button></div>
+    <input id="searchBox" type="search" data-i18n-ph="searchPh" placeholder="Cari agen atau tim…">
+  </div>
+</header>
+
+<div id="main">
+  <section id="stageCard">
+    <div id="stage"></div>
+    <div id="labels"></div>
+    <div id="grid2d"></div>
+    <div id="stageBar">
+      <div class="segctl">
+        <button data-cam="iso"><svg class="ic"><use href="#i-box"/></svg><span data-i18n="camIso">Isometrik</span></button>
+        <button data-cam="atas"><svg class="ic"><use href="#i-cross"/></svg><span data-i18n="camTop">Atas</span></button>
+        <button id="btn2d"><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="mode2d">Mode 2D</span></button>
+      </div>
+      <button id="btnPanel"><svg class="ic"><use href="#i-panel"/></svg><span data-i18n="panelT">Panel</span></button>
+    </div>
+    <div id="bubbleTip"></div>
+    <div id="hint" data-i18n="hintT">Seret untuk menggeser · Scroll untuk zoom · Klik agen untuk detail</div>
+    <div id="stageCtl">
+      <button id="simPause" class="ctlbtn" data-i18n-title="simPauseT" title="Jeda / lanjutkan animasi"><svg class="ic"><use href="#i-pause"/></svg></button>
+      <button id="camReset" class="ctlbtn" title="Reset kamera ke tampilan awal"><svg class="ic"><use href="#i-focus"/></svg></button>
+      <div class="ctlsep"></div>
+      <div class="zones">
+        <button data-zone="semua" class="on"><span data-i18n="zoneAll">Seluruh kantor</span><span class="zcount" data-zcount="semua">–</span></button>
+        <button data-zone="Muse"><i style="background:#7db4ff"></i><span data-i18n="zoneClaude">Studio Muse</span><span class="zcount" data-zcount="Muse">–</span></button>
+        <button data-zone="utama"><i style="background:#f2c94c"></i><span data-i18n="zoneOmp">Ruang OMP</span><span class="zcount" data-zcount="utama">–</span></button>
+        <button data-zone="workers"><i style="background:#5fd68b"></i><span data-i18n="zoneWorkers">Workers</span><span class="zcount" data-zcount="workers">–</span></button>
+        <button data-zone="cursor"><i style="background:#67d7b5"></i><span data-i18n="zoneCursor">Cursor</span><span class="zcount" data-zcount="cursor">–</span></button>
+        <button data-zone="meeting"><i style="background:#b49af2"></i><span data-i18n="zoneMeeting">Meeting</span><span class="zcount" data-zcount="meeting">–</span></button>
+        <button data-zone="mcp"><i style="background:#8fa3bf"></i><span data-i18n="zoneMcp">Server MCP</span><span class="zcount" data-zcount="mcp">–</span></button>
+      </div>
+    </div>
+  </section>
+
+  <aside id="panel">
+    <div class="pcard">
+      <h2><svg class="ic"><use href="#i-cal"/></svg><span data-i18n="secToday">Ringkasan hari ini</span></h2>
+      <div class="kpi" id="kpi"></div>
+    </div>
+    <div class="pcard">
+      <h2><svg class="ic"><use href="#i-bell"/></svg><span data-i18n="secNeeds">Butuh Rizal</span></h2>
+      <div id="alerts"><p class="mut small">Tidak ada alert aktif. Semua aman.</p></div>
+    </div>
+    <div class="pcard">
+      <h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="secQuota">Kuota provider</span></h2>
+      <div id="quotas"></div>
+    </div>
+    <div class="pcard">
+      <h2><svg class="ic"><use href="#i-server"/></svg><span data-i18n="secEnv">Lingkungan (konteks)</span></h2>
+      <div id="env" class="small"></div>
+    </div>
+  </aside>
+
+  <section id="dock">
+    <div class="cols">
+      <div class="dcol">
+        <div class="dhead"><h2><svg class="ic"><use href="#i-user"/></svg><span data-i18n="tasksT">Tugas (manusiawi)</span></h2></div>
+        <div class="dbody" id="tasks"></div>
+      </div>
+      <div class="dcol">
+        <div class="dhead"><h2><svg class="ic"><use href="#i-list"/></svg><span data-i18n="logT">Log (manusiawi)</span></h2><div class="sp"></div>
+          <label><input type="checkbox" id="rawToggle"> <span data-i18n="rawLbl">lihat mentah</span></label>
+          <button id="dockToggle" title="Ciutkan / bentangkan panel bawah"><svg class="ic"><use href="#i-chevd"/></svg></button>
+        </div>
+        <div class="dbody" id="events"></div>
+      </div>
+    </div>
+  </section>
+
+  <div id="boardOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-kanban"/></svg><span data-i18n="boardT">Papan Tugas</span></h2><span class="mut small" data-i18n="boardSub">Semua tugas agen, dikelompokkan per fase — diperbarui langsung</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="boardCols"></div>
+  </div>
+  <div id="modelsOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-cpu"/></svg><span data-i18n="modT">Dashboard Model &amp; Provider</span></h2><span class="mut small" data-i18n="modSub">Semua model dari semua provider — request, token, dan biaya per model (data omp stats)</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="modelsBody"></div>
+  </div>
+  <div id="perfOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="perfT">Performance Workspace</span></h2><span class="mut small" data-i18n="perfSub">Progres dan tugas satu agent — dari data tugas HQ yang sebenarnya, bukan contoh</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="perfBody"></div>
+  </div>
+  <div id="studioOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-layout"/></svg><span data-i18n="studioT">Studio</span></h2><span class="mut small" data-i18n="studioSub">Agent utama yang sedang bekerja di HQ — dari data live, bukan tim contoh</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="studioBody"></div>
+  </div>
+  <div id="sahamOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-gauge"/></svg><span data-i18n="sahamT">Saham</span></h2><span class="mut small" data-i18n="sahamSub">Modul ini belum dihubungkan ke sumber data apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="sahamBody"></div>
+  </div>
+  <div id="knowOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-list"/></svg><span data-i18n="knowT">Pengetahuan</span></h2><span class="mut small" data-i18n="knowSub">Modul ini belum dihubungkan ke sumber dokumen apa pun</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="knowBody"></div>
+  </div>
+  <div id="facOverlay" class="overlay">
+    <div class="ovHead"><h2><svg class="ic"><use href="#i-building"/></svg><span data-i18n="facT">Fasilitas &amp; Lingkungan</span></h2><span class="mut small" data-i18n="facSub">Kondisi mesin, kontainer, dan layanan di sekitar kantor virtual</span><div class="sp"></div><button data-closeov><svg class="ic"><use href="#i-x"/></svg><span data-i18n="close">Tutup</span></button></div>
+    <div id="facBody"></div>
+  </div>
+</div>
+</div>
+
+<div id="drawer">
+  <button id="drawerClose" style="float:right"><svg class="ic"><use href="#i-x"/></svg>Tutup</button>
+  <div id="drawerBody"></div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module" src="app.js"></script>
+<div id="toasts"></div>
+</body>
+</html>

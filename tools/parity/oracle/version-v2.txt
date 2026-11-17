@@ -1,0 +1,6 @@
+[perf] refresh total=7052ms collect=7048ms sys=29ms docker=152ms ts=1014ms git=43ms ps=28ms tmux=54ms omp_stats=3636ms omp_usage=1823ms sessions=264ms sources=5725ms alert=0ms db=3ms
+
+thread 'main' (263301) panicked at crates/hq-server/src/main.rs:1430:10:
+bind: Os { code: 98, kind: AddrInUse, message: "Address already in use" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+notion: sync mode=mock checked=0 updated=0 quarantined=0 failures=0

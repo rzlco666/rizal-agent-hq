@@ -1,0 +1,8 @@
+{
+  "omp": "agent:omp",
+  "cursor": "agent:cursor",
+  "Muse": "agent:muse",
+  "mcp": "agent:mcp/*",
+  "omp-workers-agg": "agent:omp/worker/*",
+  "coding-agents": "agent:*"
+}

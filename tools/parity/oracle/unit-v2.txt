@@ -1,0 +1,29 @@
+# Redacted copy of ~/.config/systemd/user/rizal-agent-hq.service and its override.conf.
+# Secret values are replaced with <redacted>; structure and non-secret values are verbatim.
+# /home/rizal/.config/systemd/user/rizal-agent-hq.service
+[Unit]
+Description=Rizal Agent HQ — markas 3D pantau semua agent Rizal (Rust)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rizal/rizal-agent-hq
+ExecStart=/home/rizal/rizal-agent-hq/bin/rizal-agent-hq
+Restart=always
+RestartSec=5
+MemoryMax=1G
+Environment=HQ_PORT=8900
+Environment=HQ_BIND=127.0.0.1
+Environment=HQ_INTERVAL=30
+Environment=HQ_DATA=/home/rizal/rizal-agent-hq/data
+Environment=HQ_WEB=/home/rizal/rizal-agent-hq/web
+
+[Install]
+WantedBy=default.target
+
+# /home/rizal/.config/systemd/user/rizal-agent-hq.service.d/override.conf
+[Service]
+Environment=EODHD_API_KEY=<redacted>
+Environment=FMP_API_KEY=<redacted>
+Environment=NOTION_API_KEY=<redacted>
