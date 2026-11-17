@@ -3,7 +3,7 @@ mod cli;
 #[tokio::main]
 async fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.is_empty() {
+    if args.is_empty() || args.iter().any(|arg| arg == "--version" || arg == "-V") {
         println!("rizal-agent-hq {}", env!("CARGO_PKG_VERSION"));
         return;
     }
