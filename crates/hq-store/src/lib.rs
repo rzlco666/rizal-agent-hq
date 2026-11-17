@@ -992,3 +992,6 @@ fn do_rebuild(
         duration_ms: start.elapsed().as_millis() as u64,
     })
 }
+
+pub fn agent_name(id: &str) -> String {
+pub fn status_from_str(s: &str) -> Status {
