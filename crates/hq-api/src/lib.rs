@@ -3,8 +3,11 @@
 #![forbid(unsafe_code)]
 
 pub mod auth;
+pub mod dto;
 pub mod error;
+pub mod handlers;
 pub mod health;
+pub mod openapi;
 pub mod router;
 pub mod state;
 pub mod sse;

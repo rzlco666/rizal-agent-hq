@@ -80,6 +80,50 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/devices", get(auth::devices))
         .route("/api/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
         .route("/ws", get(ws::ws_handler))
+        .route("/api/v1/overview", get(crate::handlers::overview::overview))
+        .route("/api/v1/agents", get(crate::handlers::agents::agents))
+        .route(
+            "/api/v1/agents/{id}",
+            get(crate::handlers::agents::agent_detail),
+        )
+        .route(
+            "/api/v1/agents/{id}/tasks",
+            get(crate::handlers::agents::agent_tasks),
+        )
+        .route(
+            "/api/v1/agents/{id}/logs",
+            get(crate::handlers::agents::agent_logs),
+        )
+        .route(
+            "/api/v1/agents/{id}/sessions",
+            get(crate::handlers::agents::agent_sessions),
+        )
+        .route(
+            "/api/v1/agents/{id}/files",
+            get(crate::handlers::agents::agent_files),
+        )
+        .route(
+            "/api/v1/agents/{id}/usage",
+            get(crate::handlers::agents::agent_usage),
+        )
+        .route("/api/v1/tasks", get(crate::handlers::tasks::tasks))
+        .route(
+            "/api/v1/tasks/{id}",
+            get(crate::handlers::tasks::task_detail),
+        )
+        .route("/api/v1/alerts", get(crate::handlers::alerts::alerts))
+        .route(
+            "/api/v1/alerts/{id}",
+            get(crate::handlers::alerts::alert_detail),
+        )
+        .route("/api/v1/timeline", get(crate::handlers::timeline::timeline))
+        .route("/api/v1/events", get(crate::handlers::timeline::timeline))
+        .route("/api/v1/usage", get(crate::handlers::usage::usage))
+        .route("/api/v1/costs", get(crate::handlers::usage::costs))
+        .route(
+            "/api/v1/openapi.json",
+            get(crate::handlers::meta::openapi_json),
+        )
         .route("/api/v1/events/stream", get(sse::sse_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth::auth_middleware))

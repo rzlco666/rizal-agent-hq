@@ -265,11 +265,13 @@ pub fn agent_observed(id: &str, status: &str) -> EventDraft {
         EventKind::AgentObserved,
         Subject::Agent(AgentId(id.to_string())),
         serde_json::json!({
-            "name": id,
-            "role": "agent",
-            "kind": "utama",
+            "observed_at_ms": 1_700_000_000_000i64,
             "runtime_key": id,
             "status": status,
+            "kind": "Utama",
+            "activity": {"key": "agent.process_running", "params": {"family": id}},
+            "processes": 1,
+            "cpu_percent": 0.0,
             "evidence": "L1"
         }),
     )
@@ -285,6 +287,30 @@ pub fn alert_raised(id: &str) -> EventDraft {
             "rule_id": "rule-1",
             "level": "warning",
             "message": "perlu perhatian"
+        }),
+    )
+}
+
+pub async fn seeded_app() -> TestApp {
+    let app = test_app().await;
+    app.ingestor
+        .ingest(vec![
+            agent_observed("agent:omp", "bekerja"),
+            agent_observed("agent:muse", "menunggu-rizal"),
+            alert_raised("a1"),
+        ])
+        .await
+        .unwrap();
+    app
+}
+
+pub fn log_with_secret(agent: &str, message: &str) -> EventDraft {
+    draft(
+        EventKind::LogRecorded,
+        Subject::Agent(AgentId(agent.to_string())),
+        serde_json::json!({
+            "message": message,
+            "sentence": {"key": "log.message", "params": {"detail": message}}
         }),
     )
 }
