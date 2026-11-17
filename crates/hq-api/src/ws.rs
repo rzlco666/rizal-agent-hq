@@ -59,41 +59,20 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
         }
     };
 
-    let Some(mut expected) = since.checked_add(1) else {
+    let Some(watermark) = replay_watermark(since, last_seq, missed.iter().map(|event| event.seq.0))
+        .filter(|_| missed.len() <= 1000)
+    else {
         send_snapshot_required(&mut sender, last_seq).await;
         let _ = sender.close().await;
         return;
     };
-    let mut contiguous = true;
-    for event in &missed {
-        if event.seq.0 != expected {
-            contiguous = false;
-            break;
-        }
-        let Some(next) = expected.checked_add(1) else {
-            contiguous = false;
-            break;
-        };
-        expected = next;
-    }
-    let snapshot = since > last_seq
-        || missed.len() > 1000
-        || !contiguous
-        || expected.checked_sub(1) != Some(last_seq);
-
-    if snapshot {
-        send_snapshot_required(&mut sender, last_seq).await;
-        let _ = sender.close().await;
-        return;
-    }
 
     let _ = sender
         .send(axum::extract::ws::Message::Text(
-            json!({"type":"hello","seq":last_seq}).to_string().into(),
+            json!({"type":"hello","seq":watermark}).to_string().into(),
         ))
         .await;
 
-    let mut last_sent = since;
     for ev in &missed {
         let patch = patch_for_event(ev);
         let _ = sender
@@ -101,8 +80,8 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
                 patch_to_json(&patch).to_string().into(),
             ))
             .await;
-        last_sent = patch.seq.0;
     }
+    let mut last_sent = watermark;
 
     loop {
         tokio::select! {
@@ -174,6 +153,26 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
     }
 }
 
+fn replay_watermark(
+    since: i64,
+    captured_watermark: i64,
+    replay_seqs: impl IntoIterator<Item = i64>,
+) -> Option<i64> {
+    if since > captured_watermark {
+        return None;
+    }
+    let mut expected = since.checked_add(1)?;
+    let mut replay_watermark = since;
+    for seq in replay_seqs {
+        if seq != expected {
+            return None;
+        }
+        replay_watermark = seq;
+        expected = expected.checked_add(1)?;
+    }
+    (replay_watermark >= captured_watermark).then_some(replay_watermark.max(captured_watermark))
+}
+
 fn patch_to_json(patch: &Patch) -> serde_json::Value {
     let upserts: Vec<serde_json::Value> = patch
         .upserts
@@ -203,6 +202,14 @@ fn patch_to_json(patch: &Patch) -> serde_json::Value {
         "upserts": upserts,
         "deletes": patch.deletes.iter().map(|d| json!({"kind":d.kind,"id":d.id})).collect::<Vec<_>>(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn replay_watermark_includes_contiguous_events_after_captured_watermark() {
+        assert_eq!(super::replay_watermark(10, 12, [11, 12, 13]), Some(13));
+    }
 }
 
 async fn send_snapshot_required(
