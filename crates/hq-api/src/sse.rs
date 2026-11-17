@@ -92,12 +92,7 @@ pub async fn sse_handler(
         _ => cursor,
     };
 
-    let stream = sse_event_stream(
-        state.store,
-        initial_phase,
-        rx,
-        replay_cursor,
-    );
+    let stream = sse_event_stream(state.store, initial_phase, rx, replay_cursor);
 
     Sse::new(stream)
         .keep_alive(
@@ -122,18 +117,12 @@ fn sse_event_stream(
                 match phase {
                     Phase::Replay(mut patches) => {
                         if let Some(patch) = patches.pop_front() {
-                            let data = serde_json::to_string(&sse_patch_json(&patch))
-                                .unwrap_or_default();
+                            let data =
+                                serde_json::to_string(&sse_patch_json(&patch)).unwrap_or_default();
                             let event = Event::default().id(patch.seq.0.to_string()).data(data);
-                            Some((
-                                Ok(event),
-                                (Phase::Replay(patches), rx, cursor),
-                            ))
+                            Some((Ok(event), (Phase::Replay(patches), rx, cursor)))
                         } else {
-                            Some((
-                                Ok(Event::default().comment("")),
-                                (Phase::Live, rx, cursor),
-                            ))
+                            Some((Ok(Event::default().comment("")), (Phase::Live, rx, cursor)))
                         }
                     }
                     Phase::Snapshot(seq) => {
@@ -141,10 +130,9 @@ fn sse_event_stream(
                         Some((Ok(event), (Phase::Done, rx, seq)))
                     }
                     Phase::Live => match rx.recv().await {
-                        Ok(patch) if should_skip_live_patch(patch.seq.0, cursor) => Some((
-                            Ok(Event::default().comment("")),
-                            (Phase::Live, rx, cursor),
-                        )),
+                        Ok(patch) if should_skip_live_patch(patch.seq.0, cursor) => {
+                            Some((Ok(Event::default().comment("")), (Phase::Live, rx, cursor)))
+                        }
                         Ok(patch) => {
                             let Some(expected) = cursor.checked_add(1) else {
                                 return Some((
@@ -163,13 +151,14 @@ fn sse_event_stream(
                                     (Phase::Done, rx, watermark),
                                 ));
                             }
-                            let data = serde_json::to_string(&sse_patch_json(&patch))
-                                .unwrap_or_default();
+                            let data =
+                                serde_json::to_string(&sse_patch_json(&patch)).unwrap_or_default();
                             let event = Event::default().id(patch.seq.0.to_string()).data(data);
                             Some((Ok(event), (Phase::Live, rx, patch.seq.0)))
                         }
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            let watermark = store.last_seq().await.map(|seq| seq.0).unwrap_or(cursor);
+                            let watermark =
+                                store.last_seq().await.map(|seq| seq.0).unwrap_or(cursor);
                             Some((
                                 Ok(snapshot_required_event(watermark)),
                                 (Phase::Done, rx, watermark),
@@ -185,9 +174,7 @@ fn sse_event_stream(
 }
 
 fn snapshot_required_event(seq: i64) -> Event {
-    Event::default().data(
-        serde_json::json!({"type":"snapshot_required","seq":seq}).to_string(),
-    )
+    Event::default().data(serde_json::json!({"type":"snapshot_required","seq":seq}).to_string())
 }
 
 fn sse_patch_json(patch: &Patch) -> serde_json::Value {

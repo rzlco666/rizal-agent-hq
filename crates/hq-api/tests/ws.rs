@@ -196,7 +196,10 @@ async fn ws_lagged_recovery_requires_snapshot_when_ring_has_partial_history() {
     })
     .await
     .expect("WS did not produce a recovery response");
-    assert!(snapshot.is_some(), "WS ended or recovered without a snapshot");
+    assert!(
+        snapshot.is_some(),
+        "WS ended or recovered without a snapshot"
+    );
 }
 
 #[tokio::test]
@@ -208,7 +211,6 @@ async fn ws_max_since_cursor_requires_snapshot() {
             .unwrap();
     assert_eq!(next_json(&mut ws).await["type"], "snapshot_required");
 }
-
 
 // helpers
 fn agent_observed(agent: &str, status: &str) -> EventDraft {

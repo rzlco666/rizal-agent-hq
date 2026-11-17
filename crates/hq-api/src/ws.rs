@@ -174,7 +174,6 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket, state: AppState, si
     }
 }
 
-
 fn patch_to_json(patch: &Patch) -> serde_json::Value {
     let upserts: Vec<serde_json::Value> = patch
         .upserts

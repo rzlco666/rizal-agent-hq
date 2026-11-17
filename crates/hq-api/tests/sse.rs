@@ -203,7 +203,6 @@ async fn sse_live_broadcast_lag_emits_snapshot_required() {
     assert!(frames.contains("\"seq\":1025"), "{frames}");
 }
 
-
 fn heartbeat(agent: &str, key: &str) -> EventDraft {
     EventDraft {
         event_ts_ms: 1000,
