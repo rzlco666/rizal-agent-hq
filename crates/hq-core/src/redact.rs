@@ -24,49 +24,36 @@ fn quick() -> &'static RegexSet {
             r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+",
             r"[A-Za-z0-9+/=_-]{32,}",
         ])
-        .unwrap()
+        .unwrap_or_else(|_| RegexSet::empty())
     })
 }
 
 fn patterns() -> &'static Vec<(Regex, &'static str)> {
     PATTERNS.get_or_init(|| {
-        vec![
-            (Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(), "aws"),
-            (Regex::new(r"ghp_[A-Za-z0-9_]{4,}").unwrap(), "github"),
+        let candidates: [(&str, &str); 9] = [
+            (r"AKIA[0-9A-Z]{16}", "aws"),
+            (r"ghp_[A-Za-z0-9_]{4,}", "github"),
+            (r"github_pat_[A-Za-z0-9_]{20,}", "github_pat"),
+            (r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}", "openai"),
+            (r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "jwt"),
             (
-                Regex::new(r"github_pat_[A-Za-z0-9_]{20,}").unwrap(),
-                "github_pat",
-            ),
-            (
-                Regex::new(r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}").unwrap(),
-                "openai",
-            ),
-            (
-                Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap(),
-                "jwt",
-            ),
-            (
-                Regex::new(
-                    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
-                )
-                .unwrap(),
+                r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
                 "private_key",
             ),
-            (
-                Regex::new(r"(?i)(Authorization:\s*Bearer\s+)\S+").unwrap(),
-                "bearer",
-            ),
-            (
-                Regex::new(r"(?i)(password\s*[=:]\s*)\S+").unwrap(),
-                "password",
-            ),
-            (
-                Regex::new(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+").unwrap(),
-                "dsn",
-            ),
-        ]
+            (r"(?i)(Authorization:\s*Bearer\s+)\S+", "bearer"),
+            (r"(?i)(password\s*[=:]\s*)\S+", "password"),
+            (r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+", "dsn"),
+        ];
+        let mut out = Vec::new();
+        for (pat, kind) in candidates {
+            if let Ok(re) = Regex::new(pat) {
+                out.push((re, kind));
+            }
+        }
+        out
     })
 }
+
 fn is_high_entropy(tok: &str) -> bool {
     if tok.len() < 32 {
         return false;
@@ -119,17 +106,19 @@ pub fn redact_text(input: &str) -> String {
         }
     }
     // high entropy
-    let he = Regex::new(r"[A-Za-z0-9+/=_-]{32,}").unwrap();
-    out = he
-        .replace_all(&out, |caps: &regex::Captures| {
-            let tok = &caps[0];
-            if is_high_entropy(tok) {
-                "[REDACTED:high_entropy]".to_string()
-            } else {
-                tok.to_string()
-            }
-        })
-        .to_string();
+    let he = Regex::new(r"[A-Za-z0-9+/=_-]{32,}").ok();
+    if let Some(he) = he {
+        out = he
+            .replace_all(&out, |caps: &regex::Captures| {
+                let tok = &caps[0];
+                if is_high_entropy(tok) {
+                    "[REDACTED:high_entropy]".to_string()
+                } else {
+                    tok.to_string()
+                }
+            })
+            .to_string();
+    }
     out
 }
 
