@@ -9,3 +9,7 @@ name = "rizal-agent-hq"
 path = "src/main.rs"
 
 [dependencies]
+hq-connectors = { path = "../hq-connectors" }
+hq-core = { path = "../hq-core" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
