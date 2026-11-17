@@ -474,9 +474,11 @@ pub struct Patch {
 ```
 
 `PatchEntity` adalah enum bertag yang berisi bentuk API (`AgentCard`, `TaskView`,
-`AlertView`, …). Patch dibangun dari event yang baru di-append, bukan dari
-perbedaan tabel. Klien menerapkan patch setelah snapshot `seq`; jika `seq`
-melompat, klien meminta snapshot penuh.
+`AlertView`, …) plus payload teredaksi. Representasi wire selalu menyertakan
+field `type` (agent/task/alert/usage/connector/approval) dan data entity yang
+cukup untuk menerapkan patch. Patch dibangun dari event yang baru di-append,
+bukan dari perbedaan tabel. Klien menerapkan patch setelah snapshot `seq`; jika
+`seq` melompat, klien meminta snapshot penuh.
 
 ## 5. API v1
 

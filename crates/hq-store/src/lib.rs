@@ -113,11 +113,11 @@ pub struct PatchRef {
 #[derive(Debug, Clone)]
 pub enum PatchEntity {
     Agent(AgentCard),
-    Task(String),
-    Alert(String),
-    Usage(String),
-    Connector(String),
-    Approval(String),
+    Task(String, serde_json::Value),
+    Alert(String, serde_json::Value),
+    Usage(String, serde_json::Value),
+    Connector(String, serde_json::Value),
+    Approval(String, serde_json::Value),
 }
 #[derive(Debug, Clone)]
 pub struct Patch {
@@ -130,10 +130,16 @@ pub fn patch_for_event(ev: &Event) -> Patch {
     use hq_core::EventKind;
     let mut upserts = Vec::new();
     match ev.draft.kind {
+        EventKind::AgentDisappeared => {
+            upserts.push(PatchEntity::Agent(AgentCard {
+                id: ev.draft.subject.key(),
+                name: agent_name(&ev.draft.subject.key()),
+                status: Status::Offline,
+            }));
+        }
         EventKind::AgentObserved
         | EventKind::AgentSeen
-        | EventKind::AgentStatusChanged
-        | EventKind::AgentDisappeared => {
+        | EventKind::AgentStatusChanged => {
             let status = ev
                 .draft
                 .payload
@@ -152,24 +158,24 @@ pub fn patch_for_event(ev: &Event) -> Patch {
         | EventKind::AlertAcknowledged
         | EventKind::AlertSnoozed
         | EventKind::AlertResolved => {
-            upserts.push(PatchEntity::Alert(ev.draft.subject.key()));
+            upserts.push(PatchEntity::Alert(ev.draft.subject.key(), ev.draft.payload.clone()));
         }
         EventKind::UsageRecorded | EventKind::QuotaObserved | EventKind::CostEstimated => {
-            upserts.push(PatchEntity::Usage(ev.draft.subject.key()));
+            upserts.push(PatchEntity::Usage(ev.draft.subject.key(), ev.draft.payload.clone()));
         }
         EventKind::ConnectorRegistered
         | EventKind::ConnectorHealthChanged
         | EventKind::ConnectorPollCompleted
         | EventKind::ConnectorAuthFailed
         | EventKind::ConnectorEvent => {
-            upserts.push(PatchEntity::Connector(ev.draft.subject.key()));
+            upserts.push(PatchEntity::Connector(ev.draft.subject.key(), ev.draft.payload.clone()));
         }
         EventKind::ActionRequested
         | EventKind::ActionApproved
         | EventKind::ActionDenied
         | EventKind::ActionExecuted
         | EventKind::ActionFailed => {
-            upserts.push(PatchEntity::Approval(ev.draft.subject.key()));
+            upserts.push(PatchEntity::Approval(ev.draft.subject.key(), ev.draft.payload.clone()));
         }
         _ => {}
     }
