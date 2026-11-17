@@ -1,4 +1,5 @@
 use hq_connectors::probes::{parse_ps, run_timeout};
+use std::time::{Duration, Instant};
 
 #[test]
 fn parses_ps_and_redacts_args() {
@@ -21,6 +22,18 @@ fn timeout_kills_hung_command() {
 #[test]
 fn missing_binary_is_none_not_panic() {
     assert!(run_timeout("hq-no-such-binary", &[], 100).is_none());
+}
+
+#[test]
+fn descendant_holding_stdout_does_not_block_run_timeout() {
+    let started = Instant::now();
+    let out = run_timeout("sh", &["-c", "sleep 3 &"], 200);
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "run_timeout blocked {elapsed:?} waiting for descendant stdout"
+    );
+    assert!(out.is_none());
 }
 
 #[test]

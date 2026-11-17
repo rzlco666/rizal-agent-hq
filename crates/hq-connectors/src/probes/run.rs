@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -24,7 +25,8 @@ pub fn run_timeout(program: &str, argv: &[&str], timeout_ms: u64) -> Option<Comm
     }
     let mut child = command.spawn().ok()?;
     let mut stdout = child.stdout.take()?;
-    let reader = thread::spawn(move || {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
         let mut output = Vec::with_capacity(MAX_STDOUT.min(8192));
         let mut buffer = [0; 8192];
         loop {
@@ -36,7 +38,7 @@ pub fn run_timeout(program: &str, argv: &[&str], timeout_ms: u64) -> Option<Comm
                 }
             }
         }
-        output
+        let _ = tx.send(output);
     });
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     let status = loop {
@@ -55,7 +57,10 @@ pub fn run_timeout(program: &str, argv: &[&str], timeout_ms: u64) -> Option<Comm
             }
         }
     };
-    let bytes = reader.join().ok()?;
+    let bytes = match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+        Ok(bytes) => bytes,
+        Err(_) => return None,
+    };
     let status = status?;
     Some(CommandOutput {
         stdout: String::from_utf8_lossy(&bytes).into_owned(),
