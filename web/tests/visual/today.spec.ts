@@ -10,6 +10,16 @@ async function settle(page: Page) {
   } else {
     await expect(page.getByTestId('nav-rail')).toBeVisible();
   }
+  await expect(page.locator('.uplot')).toBeVisible();
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('.uplot canvas') as HTMLCanvasElement | null;
+    if (!canvas) return false;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+    return false;
+  });
 }
 
 test('today matches day snapshot at 1440x900', async ({ page }) => {
