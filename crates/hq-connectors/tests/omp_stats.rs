@@ -1,4 +1,7 @@
-use hq_connectors::runtime::omp::{omp_usage_events, OmpAdapter, OmpStats};
+use hq_connectors::probes::ProcessInfo;
+use hq_connectors::runtime::omp::{
+    omp_status, omp_usage_events, OmpAdapter, OmpActivity, OmpMessageMeta, OmpStats,
+};
 use hq_connectors::runtime::{CollectCtx, RuntimeAdapter};
 use hq_core::EventKind;
 use std::fs;
@@ -72,4 +75,83 @@ async fn stats_command_result_is_cached_for_five_minutes() {
         event.validate().unwrap();
     }
     fs::remove_dir_all(&dir).unwrap();
+}
+
+fn proc(name: &str) -> Option<ProcessInfo> {
+    Some(ProcessInfo {
+        pid: 7,
+        ppid: 1,
+        pcpu: 2.5,
+        pmem: 0.4,
+        etime: "00:10".to_owned(),
+        comm: name.to_owned(),
+        args: format!("/usr/bin/{name} stats"),
+    })
+}
+
+fn recent_msg(stop_reason: &str, at_ms: i64) -> Option<OmpMessageMeta> {
+    Some(OmpMessageMeta {
+        timestamp_ms: at_ms,
+        stop_reason: Some(stop_reason.to_owned()),
+        error_message: None,
+        folder: Some("/mnt/d/laragon/integra/demo-epm".to_owned()),
+    })
+}
+
+fn err_msg(at_ms: i64) -> Option<OmpMessageMeta> {
+    Some(OmpMessageMeta {
+        timestamp_ms: at_ms,
+        stop_reason: Some("stop".to_owned()),
+        error_message: Some("request failed".to_owned()),
+        folder: None,
+    })
+}
+
+#[test]
+fn recent_tool_use_is_working() {
+    let a = omp_status(proc("omp"), recent_msg("toolUse", 1_000_000), 1_000_000);
+    assert_eq!(a.status, hq_core::Status::Bekerja);
+}
+
+#[test]
+fn stopped_recent_session_is_santai() {
+    let a = omp_status(
+        proc("omp"),
+        recent_msg("stop", 1_000_000 - 20 * 60_000),
+        1_000_000,
+    );
+    assert_eq!(a.status, hq_core::Status::Santai);
+}
+
+#[test]
+fn error_message_is_error() {
+    let a = omp_status(proc("omp"), err_msg(1_000_000), 1_000_000);
+    assert_eq!(a.status, hq_core::Status::Error);
+}
+
+#[test]
+fn absent_process_is_offline() {
+    let a = omp_status(None, recent_msg("toolUse", 1_000_000), 1_000_000);
+    assert_eq!(a.status, hq_core::Status::Offline);
+}
+
+#[test]
+fn recent_non_tool_message_is_thinking() {
+    let a = omp_status(proc("omp"), recent_msg("stop", 1_000_000), 1_000_000);
+    assert_eq!(a.status, hq_core::Status::Berpikir);
+}
+
+#[test]
+fn activity_and_evidence_come_from_structured_metadata() {
+    let a: OmpActivity = omp_status(
+        proc("omp"),
+        recent_msg("toolUse", 1_000_000),
+        1_000_000,
+    );
+    assert_eq!(a.activity.key, "agent.working_in_folder");
+    assert_eq!(
+        a.activity.params.get("folder").map(String::as_str),
+        Some("/mnt/d/laragon/integra/demo-epm")
+    );
+    assert_eq!(a.evidence, hq_core::EvidenceLevel::L3);
 }

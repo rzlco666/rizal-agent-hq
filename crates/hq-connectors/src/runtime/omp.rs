@@ -1,9 +1,11 @@
-use crate::probes::run_timeout;
+use crate::probes::{run_timeout, ProcessInfo};
 use hq_core::{
-    AgentId, EventDraft, EventKind, SourceId, Subject, UsageScope,
+    redact_text, AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SourceId,
+    Status, Subject, UsageScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -172,7 +174,127 @@ impl OmpAdapter {
 #[async_trait::async_trait]
 impl crate::runtime::RuntimeAdapter for OmpAdapter {
     async fn observe(&self, ctx: &crate::runtime::CollectCtx) -> Result<Vec<EventDraft>, String> {
-        Ok(self.observe_stats(ctx.now_ms))
+        let Some(stats) = self.stats() else {
+            return Ok(Vec::new());
+        };
+        let mut events = omp_usage_events(&stats, ctx.now_ms);
+        let processes: Vec<&ProcessInfo> = ctx
+            .processes
+            .iter()
+            .filter(|process| crate::runtime::classify(process) == Some("omp"))
+            .collect();
+        let latest = (stats.overall.last_timestamp > 0).then(|| OmpMessageMeta {
+            timestamp_ms: stats.overall.last_timestamp,
+            stop_reason: None,
+            error_message: None,
+            folder: stats.by_folder.first().map(|folder| folder.folder.clone()),
+        });
+        let activity = omp_status(processes.first().copied().cloned(), latest, ctx.now_ms);
+        events.insert(0, omp_agent_event(&processes, activity, ctx.now_ms));
+        Ok(events)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OmpMessageMeta {
+    pub timestamp_ms: i64,
+    pub stop_reason: Option<String>,
+    pub error_message: Option<String>,
+    pub folder: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OmpActivity {
+    pub status: Status,
+    pub activity: Sentence,
+    pub evidence: EvidenceLevel,
+    pub reason: &'static str,
+}
+
+/// Status comes only from process presence and message metadata. Message text is
+/// never read; the folder is redacted because paths can carry tokens.
+pub fn omp_status(
+    process: Option<ProcessInfo>,
+    latest: Option<OmpMessageMeta>,
+    now_ms: i64,
+) -> OmpActivity {
+    let folder = latest
+        .as_ref()
+        .and_then(|message| message.folder.as_deref())
+        .unwrap_or("unknown");
+    let mut params = BTreeMap::new();
+    params.insert(
+        "folder".to_owned(),
+        redact_text(folder).chars().take(200).collect(),
+    );
+    let activity = Sentence {
+        key: "agent.working_in_folder".to_owned(),
+        params,
+    };
+    let (status, reason) = if process.is_none() {
+        (Status::Offline, "process_absent")
+    } else {
+        let age_ms = latest
+            .as_ref()
+            .map(|message| now_ms.saturating_sub(message.timestamp_ms).max(0))
+            .unwrap_or(i64::MAX);
+        let recent_error = latest.as_ref().is_some_and(|message| {
+            age_ms < 300_000
+                && message
+                    .error_message
+                    .as_deref()
+                    .is_some_and(|text| !text.trim().is_empty())
+        });
+        let tool_use = latest.as_ref().is_some_and(|message| {
+            age_ms < 90_000
+                && message.stop_reason.as_deref().is_some_and(|reason| {
+                    reason.eq_ignore_ascii_case("tooluse")
+                        || reason.eq_ignore_ascii_case("tool_use")
+                })
+        });
+        if recent_error {
+            (Status::Error, "recent_error")
+        } else if tool_use {
+            (Status::Bekerja, "tool_use")
+        } else if age_ms < 600_000 {
+            (Status::Berpikir, "recent_message")
+        } else {
+            (Status::Santai, "idle")
+        }
+    };
+    OmpActivity {
+        status,
+        activity,
+        evidence: EvidenceLevel::L3,
+        reason,
+    }
+}
+
+fn omp_agent_event(
+    processes: &[&ProcessInfo],
+    observed: OmpActivity,
+    now_ms: i64,
+) -> EventDraft {
+    EventDraft {
+        event_ts_ms: now_ms,
+        kind: EventKind::AgentObserved,
+        subject: Subject::Agent(AgentId("agent:omp".to_owned())),
+        source: SourceId("local".to_owned()),
+        correlation_id: None,
+        causation_id: None,
+        idempotency_key: Some(format!("omp:observed:{}", now_ms / 60_000)),
+        payload: json!({
+            "observed_at_ms": now_ms,
+            "runtime_key": "omp:main",
+            "status": observed.status,
+            "status_reason": observed.reason,
+            "kind": AgentKind::Utama,
+            "activity": observed.activity,
+            "processes": processes.len() as u32,
+            "cpu_percent": processes.iter().map(|process| process.pcpu as f64).sum::<f64>(),
+            "evidence": observed.evidence,
+            "source": "omp",
+        }),
     }
 }
 

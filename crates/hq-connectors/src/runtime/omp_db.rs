@@ -1,12 +1,9 @@
+use crate::probes::ProcessInfo;
 use crate::runtime::classify;
-use crate::runtime::omp::slug;
-use hq_core::{
-    redact_text, AgentId, AgentKind, EventDraft, EventKind, EvidenceLevel, Sentence, SessionId,
-    SourceId, Status, Subject, UsageScope,
-};
+use crate::runtime::omp::{omp_status, slug, OmpMessageMeta};
+use hq_core::{AgentId, AgentKind, EventDraft, EventKind, SessionId, SourceId, Subject, UsageScope};
 use rusqlite::{params, Connection, OpenFlags};
 use serde_json::json;
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
@@ -43,7 +40,9 @@ impl OmpDbAdapter {
         Some(conn)
     }
 
-    pub fn observe_rows(&self, now_ms: i64, processes: usize, cpu_percent: f64) -> Vec<EventDraft> {
+    pub fn observe_rows(&self, now_ms: i64, processes: &[&ProcessInfo]) -> Vec<EventDraft> {
+        let process_count = processes.len();
+        let cpu_percent = processes.iter().map(|process| process.pcpu as f64).sum::<f64>();
         let Some(conn) = self.connect() else {
             return Vec::new();
         };
@@ -158,28 +157,21 @@ impl OmpDbAdapter {
             };
             rows.filter_map(Result::ok).collect()
         };
-        let activity = Sentence {
-            key: "agent.working_in_folder".to_owned(),
-            params: BTreeMap::from([(
-                "folder".to_owned(),
-                redact_text(&session_id(&folder)),
-            )]),
-        };
         for worker in workers.iter().take(MAX_WORKERS) {
             let subject = Subject::Agent(AgentId(format!(
                 "agent:omp/worker/{}",
                 slug(&worker.agent_type)
             )));
-            let recent = now_ms.saturating_sub(worker.last_ms) < WINDOW_MS;
-            let status = if recent && worker.error_message.is_some() {
-                Status::Error
-            } else if recent && worker.stop_reason.as_deref() == Some("toolUse") {
-                Status::Bekerja
-            } else if recent {
-                Status::Berpikir
-            } else {
-                Status::Santai
-            };
+            let observed = omp_status(
+                processes.first().copied().cloned(),
+                Some(OmpMessageMeta {
+                    timestamp_ms: worker.last_ms,
+                    stop_reason: worker.stop_reason.clone(),
+                    error_message: worker.error_message.clone(),
+                    folder: Some(session_id(&folder)),
+                }),
+                now_ms,
+            );
             events.push(EventDraft {
                 event_ts_ms: worker.last_ms.max(1),
                 kind: EventKind::AgentObserved,
@@ -195,12 +187,13 @@ impl OmpDbAdapter {
                 payload: json!({
                     "observed_at_ms": worker.last_ms.max(1),
                     "runtime_key": format!("omp:worker:{}", slug(&worker.agent_type)),
-                    "status": status,
+                    "status": observed.status,
+                    "status_reason": observed.reason,
                     "kind": AgentKind::Worker,
-                    "activity": activity,
-                    "processes": processes as u32,
+                    "activity": observed.activity,
+                    "processes": process_count as u32,
                     "cpu_percent": cpu_percent,
-                    "evidence": EvidenceLevel::L3,
+                    "evidence": observed.evidence,
                     "parent": "agent:omp",
                     "worker_type": worker.agent_type,
                     "tokens": worker.tokens,
@@ -236,6 +229,16 @@ impl OmpDbAdapter {
             let tokens: i64 = workers.iter().map(|worker| worker.tokens).sum();
             let cost: f64 = workers.iter().map(|worker| worker.cost).sum();
             let last_ms = workers.iter().map(|worker| worker.last_ms).max().unwrap_or(1);
+            let observed = omp_status(
+                processes.first().copied().cloned(),
+                Some(OmpMessageMeta {
+                    timestamp_ms: last_ms,
+                    stop_reason: Some("toolUse".to_owned()),
+                    error_message: None,
+                    folder: Some(session_id(&folder)),
+                }),
+                now_ms,
+            );
             events.push(EventDraft {
                 event_ts_ms: last_ms.max(1),
                 kind: EventKind::AgentObserved,
@@ -249,12 +252,13 @@ impl OmpDbAdapter {
                 payload: json!({
                     "observed_at_ms": last_ms.max(1),
                     "runtime_key": "omp:workers:agg",
-                    "status": Status::Bekerja,
+                    "status": observed.status,
+                    "status_reason": observed.reason,
                     "kind": AgentKind::Worker,
-                    "activity": activity,
-                    "processes": processes as u32,
+                    "activity": observed.activity,
+                    "processes": process_count as u32,
                     "cpu_percent": cpu_percent,
-                    "evidence": EvidenceLevel::L3,
+                    "evidence": observed.evidence,
                     "parent": "agent:omp",
                     "worker_type": "omp-workers-agg",
                     "worker_types": workers.len(),
@@ -274,13 +278,12 @@ impl crate::runtime::RuntimeAdapter for OmpDbAdapter {
         &self,
         ctx: &crate::runtime::CollectCtx,
     ) -> Result<Vec<EventDraft>, String> {
-        let omp: Vec<_> = ctx
+        let omp: Vec<&ProcessInfo> = ctx
             .processes
             .iter()
             .filter(|process| classify(process) == Some("omp"))
             .collect();
-        let cpu = omp.iter().map(|process| process.pcpu as f64).sum();
-        Ok(self.observe_rows(ctx.now_ms, omp.len(), cpu))
+        Ok(self.observe_rows(ctx.now_ms, &omp))
     }
 }
 
