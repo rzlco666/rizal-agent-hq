@@ -1,0 +1,91 @@
+{
+  "overall": {
+    "totalRequests": 325,
+    "successfulRequests": 310,
+    "failedRequests": 15,
+    "totalInputTokens": 108000000,
+    "totalOutputTokens": 584000,
+    "totalCacheReadTokens": 12000,
+    "totalCost": 1.481,
+    "errorRate": 0.046,
+    "lastTimestamp": 1760000000000
+  },
+  "byModel": [
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "totalCost": 1.12,
+      "totalRequests": 200,
+      "successfulRequests": 195,
+      "failedRequests": 5,
+      "totalInputTokens": 80000000,
+      "totalOutputTokens": 400000,
+      "totalCacheReadTokens": 8000
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "totalCost": 0.361,
+      "totalRequests": 125,
+      "successfulRequests": 115,
+      "failedRequests": 10,
+      "totalInputTokens": 28000000,
+      "totalOutputTokens": 184000,
+      "totalCacheReadTokens": 4000
+    }
+  ],
+  "byFolder": [
+    {
+      "folder": "/mnt/d/laragon/integra/demo-epm",
+      "totalRequests": 210,
+      "totalInputTokens": 70000000,
+      "totalOutputTokens": 300000,
+      "totalCost": 0.92
+    },
+    {
+      "folder": "/home/rizal/projects/rizal-agent-hq-v3",
+      "totalRequests": 115,
+      "totalInputTokens": 38000000,
+      "totalOutputTokens": 284000,
+      "totalCost": 0.561
+    }
+  ],
+  "byAgentType": [
+    {
+      "agentType": "main",
+      "totalRequests": 250,
+      "totalInputTokens": 90000000,
+      "totalOutputTokens": 500000,
+      "totalCost": 1.201
+    },
+    {
+      "agentType": "researcher",
+      "totalRequests": 50,
+      "totalInputTokens": 12000000,
+      "totalOutputTokens": 60000,
+      "totalCost": 0.2
+    },
+    {
+      "agentType": "reviewer",
+      "totalRequests": 25,
+      "totalInputTokens": 6000000,
+      "totalOutputTokens": 24000,
+      "totalCost": 0.08
+    }
+  ],
+  "timeSeries": [
+    {
+      "timestamp": 1759999000000,
+      "requests": 12,
+      "inputTokens": 4000000,
+      "outputTokens": 22000,
+      "cost": 0.05
+    }
+  ],
+  "costSeries": [
+    {
+      "timestamp": 1759999000000,
+      "cost": 0.05
+    }
+  ]
+}
