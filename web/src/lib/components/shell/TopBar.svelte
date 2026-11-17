@@ -3,6 +3,7 @@
   import { Monitor, Moon, Sun } from 'lucide-svelte';
   import { t } from '$lib/i18n';
   import { ui, type Locale, type Theme } from '$lib/stores/ui.svelte';
+  import { attention } from '$lib/stores/attention.svelte';
   import Keycap from '../ui/Keycap.svelte';
   import { isActive, navItems } from './nav';
 
@@ -68,8 +69,8 @@
     </span>
   </span>
 
-  <button type="button" class="attention" aria-label={`${t('topbar.attention')} 0`} onclick={onopenAttention}>
-    <span class="attention-count mono" aria-hidden="true">0</span>
+  <button type="button" class="attention" aria-label={`${t('topbar.attention')} ${attention.openCount}`} onclick={onopenAttention}>
+    <span class="attention-count mono" aria-hidden="true">{attention.openCount}</span>
   </button>
 </header>
 

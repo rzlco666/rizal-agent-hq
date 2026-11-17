@@ -1,7 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createLiveStore, type LiveSocket } from './live.svelte';
-
-function fakeSocket(): LiveSocket {
+function fakeSocket(): LiveSocket & { closed: boolean } {
   return {
     url: '',
     onopen: null,

@@ -4,6 +4,7 @@
 
   import { t } from '$lib/i18n';
   import type { PaletteAction } from '$lib/keyboard/palette';
+  import { attention } from '$lib/stores/attention.svelte';
   import { ui } from '$lib/stores/ui.svelte';
   import AttentionRail from '../domain/AttentionRail.svelte';
   import CommandPalette from '../ui/CommandPalette.svelte';
@@ -73,14 +74,24 @@
       {@render children()}
     </main>
     <div class="rail-slot">
-      <AttentionRail onopen={openAttention} />
+      <AttentionRail
+        alerts={attention.items}
+        onopen={openAttention}
+        onack={(item) => void attention.ack(item.id)}
+        onsnooze={(item) => void attention.snooze(item.id)}
+      />
     </div>
   </div>
 </div>
 
 <Drawer open={attentionOpen} title={t('attention.title')} onclose={() => (attentionOpen = false)}>
   <div class="sheet-rail">
-    <AttentionRail onopen={openAttention} />
+    <AttentionRail
+      alerts={attention.items}
+      onopen={openAttention}
+      onack={(item) => void attention.ack(item.id)}
+      onsnooze={(item) => void attention.snooze(item.id)}
+    />
   </div>
 </Drawer>
 

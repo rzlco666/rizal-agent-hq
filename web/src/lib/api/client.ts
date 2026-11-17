@@ -33,6 +33,9 @@ export type EventPage = JsonBody<
 export type UsageReport = JsonBody<
   paths["/api/v1/usage"]["get"]["responses"][200]
 >;
+export type CostReport = JsonBody<
+  paths["/api/v1/costs"]["get"]["responses"][200]
+>;
 
 type ErrorBody = {
   code: string;
@@ -166,7 +169,18 @@ export function getTimeline(since?: string, limit = 50): Promise<EventPage> {
   return request(`/timeline?${params.toString()}`);
 }
 
-export function getUsage(agent?: string): Promise<UsageReport> {
-  const query = agent ? `?agent=${encodeURIComponent(agent)}` : "";
-  return request(`/usage${query}`);
+export function getCosts(): Promise<CostReport> {
+  return request("/costs");
+}
+
+export function getUsage(
+  agent?: string,
+  options?: { group_by?: string; window?: "24h" | "7d" }
+): Promise<UsageReport> {
+  const params = new URLSearchParams();
+  if (agent) params.set("agent", agent);
+  if (options?.group_by) params.set("group_by", options.group_by);
+  if (options?.window) params.set("window", options.window);
+  const query = params.toString();
+  return request(`/usage${query ? `?${query}` : ""}`);
 }

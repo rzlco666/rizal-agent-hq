@@ -57,7 +57,7 @@ function sequence(value: unknown): number {
  * failed connection; a healthy WebSocket never triggers a periodic refetch.
  */
 export function createLiveStore(
-  socketOrFactory: LiveSocket | (() => LiveSocket),
+  socketOrFactory: LiveSocket | ((url: string) => LiveSocket),
   refetch?: () => void | Promise<unknown>
 ) {
   let state = $state<LiveState>('connecting');
@@ -256,7 +256,7 @@ export function createLiveStore(
       return null;
     }
 
-    const socket = socketFactory();
+    const socket = socketFactory(nextUrl());
     current = socket;
     socket.url = nextUrl();
     socket.onopen = () => {

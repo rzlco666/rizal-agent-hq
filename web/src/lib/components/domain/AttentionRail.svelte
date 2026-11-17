@@ -98,7 +98,7 @@
             </button>
             <span class="actions">
               {#if onack}
-                <IconButton icon={Check} label={t('attention.ack')} size="sm" onclick={() => onack(item)} />
+                <IconButton icon={Check} label={t('attention.ackShort')} size="sm" onclick={() => onack(item)} />
               {/if}
               {#if onsnooze}
                 <IconButton icon={Clock} label={t('attention.snooze')} size="sm" onclick={() => onsnooze(item)} />

@@ -39,7 +39,7 @@ test('ack from rail updates count without reload', async ({ page }) => {
   const before = (await count.textContent())?.trim() ?? '';
   expect(before).not.toBe('');
   await page.getByTestId('attention-row').first().getByRole('button', { name: /ack/i }).click();
-  await expect(count).not.toHaveText(before, { exact: true });
+  await expect(count).not.toHaveText(before);
 });
 
 test('offline banner appears and disappears', async ({ page }) => {
