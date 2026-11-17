@@ -36,11 +36,18 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /tests\/perf\//,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
     },
     {
       name: 'phone',
+      testIgnore: /tests\/perf\//,
       use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } }
+    },
+    {
+      name: 'perf',
+      testMatch: /tests\/perf\//,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
     }
   ],
   webServer: {
