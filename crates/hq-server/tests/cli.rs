@@ -32,7 +32,12 @@ fn device_add_prints_pairing_code_once_and_stores_only_hash() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let code = stdout
         .split_whitespace()
-        .find(|word| word.len() == 8 && word.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+        .find(|word| {
+            word.len() == 8
+                && word
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        })
         .expect("pairing code printed once")
         .to_string();
     let db = std::fs::read(dir.path().join("hq.db")).unwrap();
@@ -48,4 +53,22 @@ fn device_add_prints_pairing_code_once_and_stores_only_hash() {
         .unwrap();
     assert!(list.status.success());
     assert!(!String::from_utf8_lossy(&list.stdout).contains(&code));
+}
+
+#[test]
+fn openapi_writes_document_and_checks_schemas() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("openapi.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_rizal-agent-hq"))
+        .args(["openapi", "--out", out.to_str().unwrap(), "--check"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    assert!(doc["paths"]["/api/v1/overview"]["get"]["responses"]["200"].is_object());
+    assert!(doc["components"]["schemas"]["Overview"].is_object());
 }

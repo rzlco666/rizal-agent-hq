@@ -20,9 +20,77 @@ pub async fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("collect") => collect_once(args).await,
         Some("device") => device(args).await,
+        Some("openapi") => openapi(args),
         _ => {
             eprintln!("usage: rizal-agent-hq <collect|device|openapi> [options]");
             2
+        }
+    }
+}
+
+fn openapi(args: &[String]) -> i32 {
+    let mut out: Option<&str> = None;
+    let mut check = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" if index + 1 < args.len() => {
+                out = Some(args[index + 1].as_str());
+                index += 2;
+            }
+            "--check" => {
+                check = true;
+                index += 1;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return 2;
+            }
+        }
+    }
+    let Some(out) = out else {
+        eprintln!("usage: rizal-agent-hq openapi --out <path> [--check]");
+        return 2;
+    };
+    use utoipa::OpenApi;
+    let doc = hq_api::openapi::ApiDoc::openapi();
+    let json = match serde_json::to_value(&doc) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("cannot serialize openapi: {error}");
+            return 1;
+        }
+    };
+    if check {
+        let rendered = json.to_string();
+        let schemas = &json["components"]["schemas"];
+        let mut start = 0;
+        while let Some(index) = rendered[start..].find("#/components/schemas/") {
+            let absolute = start + index + "#/components/schemas/".len();
+            let name: String = rendered[absolute..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if schemas.get(&name).is_none() {
+                eprintln!("missing schema: {name}");
+                return 1;
+            }
+            start = absolute;
+        }
+        let paths = json["paths"].as_object().expect("paths object");
+        if paths.is_empty() {
+            eprintln!("no routes registered");
+            return 1;
+        }
+    }
+    match serde_json::to_string_pretty(&json)
+        .ok()
+        .and_then(|text| std::fs::write(out, text).ok())
+    {
+        Some(()) => 0,
+        None => {
+            eprintln!("cannot write {out}");
+            1
         }
     }
 }
@@ -118,20 +186,21 @@ async fn device(args: &[String]) -> i32 {
             println!("Pairing code: {code}");
             0
         }
-        Some("list") => {
-            match store.devices().await {
-                Ok(devices) => {
-                    let views: Vec<hq_api::auth::DeviceView> =
-                        devices.into_iter().map(Into::into).collect();
-                    println!("{}", serde_json::to_string_pretty(&views).unwrap_or_default());
-                    0
-                }
-                Err(_) => {
-                    eprintln!("cannot read devices");
-                    1
-                }
+        Some("list") => match store.devices().await {
+            Ok(devices) => {
+                let views: Vec<hq_api::auth::DeviceView> =
+                    devices.into_iter().map(Into::into).collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&views).unwrap_or_default()
+                );
+                0
             }
-        }
+            Err(_) => {
+                eprintln!("cannot read devices");
+                1
+            }
+        },
         _ => {
             eprintln!("usage: rizal-agent-hq device <add|list> [options]");
             2

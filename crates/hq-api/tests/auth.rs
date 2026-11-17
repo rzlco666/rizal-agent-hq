@@ -79,7 +79,13 @@ async fn ws_ticket_is_single_use_and_expires() {
     assert!(!consume_ws_ticket(&app, &ticket).await);
 
     let ticket = issue_ws_ticket(&app.app).await;
-    app.state.tickets.lock().unwrap().get_mut(&ticket).unwrap().expires_at_ms = 1;
+    app.state
+        .tickets
+        .lock()
+        .unwrap()
+        .get_mut(&ticket)
+        .unwrap()
+        .expires_at_ms = 1;
     assert!(!consume_ws_ticket(&app, &ticket).await);
 }
 
@@ -94,10 +100,7 @@ async fn pairing_code_exchanges_for_scoped_token_once() {
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
-    let token = body_json(res).await["token"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let token = body_json(res).await["token"].as_str().unwrap().to_string();
     assert_eq!(
         get_with_bearer(app.app.clone(), "/api/v1/health", &token)
             .await
@@ -142,11 +145,9 @@ async fn devices_can_be_listed_and_revoked() {
 
 #[tokio::test]
 async fn loopback_without_trust_requires_token() {
-    let store = Store::open(StoreOptions::for_dir(
-        tempfile::tempdir().unwrap().path(),
-    ))
-    .await
-    .unwrap();
+    let store = Store::open(StoreOptions::for_dir(tempfile::tempdir().unwrap().path()))
+        .await
+        .unwrap();
     let app = hq_api::build_router(AppState {
         store,
         ring: std::sync::Arc::new(std::sync::Mutex::new(PatchRing::new(1000))),

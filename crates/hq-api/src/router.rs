@@ -4,8 +4,7 @@ use crate::sse;
 use crate::state::AppState;
 use crate::ws;
 use axum::{
-    Json,
-    Router,
+    Json, Router,
     body::Body,
     extract::Request,
     middleware::{self, Next},
@@ -16,7 +15,8 @@ use hq_store::{PatchRing, Store};
 
 use std::sync::{Arc, Mutex};
 use tower_http::{
-    catch_panic::CatchPanicLayer, compression::CompressionLayer,
+    catch_panic::CatchPanicLayer,
+    compression::CompressionLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
 };
@@ -55,7 +55,9 @@ async fn fill_request_id(request: Request, next: Next) -> Response {
         return response;
     }
     let (parts, body) = response.into_parts();
-    let bytes = axum::body::to_bytes(body, 64 * 1024).await.unwrap_or_default();
+    let bytes = axum::body::to_bytes(body, 64 * 1024)
+        .await
+        .unwrap_or_default();
     let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return Response::from_parts(parts, Body::from(bytes));
     };
@@ -76,9 +78,15 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health_legacy))
         .route("/api/v1/health", get(health))
         .route("/api/v1/auth/pair", axum::routing::post(auth::pair))
-        .route("/api/v1/auth/ws-ticket", axum::routing::post(auth::ws_ticket))
+        .route(
+            "/api/v1/auth/ws-ticket",
+            axum::routing::post(auth::ws_ticket),
+        )
         .route("/api/v1/devices", get(auth::devices))
-        .route("/api/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
+        .route(
+            "/api/v1/devices/{id}",
+            axum::routing::delete(auth::revoke_device),
+        )
         .route("/ws", get(ws::ws_handler))
         .route("/api/v1/overview", get(crate::handlers::overview::overview))
         .route("/api/v1/agents", get(crate::handlers::agents::agents))
@@ -112,6 +120,18 @@ pub fn build_router(state: AppState) -> Router {
             get(crate::handlers::tasks::task_detail),
         )
         .route("/api/v1/alerts", get(crate::handlers::alerts::alerts))
+        .route(
+            "/api/v1/alerts/{id}/ack",
+            axum::routing::post(crate::handlers::alerts::ack_alert),
+        )
+        .route(
+            "/api/v1/alerts/{id}/snooze",
+            axum::routing::post(crate::handlers::alerts::snooze_alert),
+        )
+        .route(
+            "/api/v1/alerts/{id}/resolve",
+            axum::routing::post(crate::handlers::alerts::resolve_alert),
+        )
         .route(
             "/api/v1/alerts/{id}",
             get(crate::handlers::alerts::alert_detail),

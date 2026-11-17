@@ -4,9 +4,7 @@ use axum::{
     Router,
     body::Body,
     extract::ConnectInfo,
-    http::{
-        HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, header,
-    },
+    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, header},
     response::Response,
 };
 use hq_api::{
@@ -152,12 +150,7 @@ pub async fn get_with_bearer(app: Router, uri: &str, token: &str) -> Response {
     app.oneshot(req).await.unwrap()
 }
 
-pub async fn post(
-    app: Router,
-    uri: &str,
-    body: serde_json::Value,
-    peer: SocketAddr,
-) -> Response {
+pub async fn post(app: Router, uri: &str, body: serde_json::Value, peer: SocketAddr) -> Response {
     let mut req = Request::builder()
         .uri(uri)
         .method(Method::POST)
@@ -181,7 +174,10 @@ pub async fn post_with_cookie(
         .method(Method::POST)
         .extension(ConnectInfo(remote()))
         .header(header::CONTENT_TYPE, "application/json")
-        .header(header::COOKIE, format!("hq_session={token}; csrf=csrf-value"))
+        .header(
+            header::COOKIE,
+            format!("hq_session={token}; csrf=csrf-value"),
+        )
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     if let Some(csrf) = csrf {
@@ -230,12 +226,15 @@ fn ws_upgrade_headers() -> HeaderMap {
 }
 
 pub async fn issue_ws_ticket(app: &Router) -> String {
-    let res = post(app.clone(), "/api/v1/auth/ws-ticket", serde_json::json!({}), loopback()).await;
+    let res = post(
+        app.clone(),
+        "/api/v1/auth/ws-ticket",
+        serde_json::json!({}),
+        loopback(),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
-    body_json(res).await["ticket"]
-        .as_str()
-        .unwrap()
-        .to_string()
+    body_json(res).await["ticket"].as_str().unwrap().to_string()
 }
 
 pub async fn consume_ws_ticket(app: &TestApp, ticket: &str) -> bool {

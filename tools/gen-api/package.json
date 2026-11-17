@@ -1,0 +1,11 @@
+{
+  "name": "hq-gen-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen": "node gen.mjs ../../target/openapi.json --out ../../web/src/lib/api/schema.d.ts"
+  },
+  "dependencies": {
+    "openapi-typescript": "^7.13.0"
+  }
+}

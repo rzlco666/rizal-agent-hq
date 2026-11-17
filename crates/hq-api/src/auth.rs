@@ -30,8 +30,7 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            trust_loopback: std::env::var_os("HQ_TRUST_LOOPBACK")
-                .is_none_or(|v| v != "0"),
+            trust_loopback: std::env::var_os("HQ_TRUST_LOOPBACK").is_none_or(|v| v != "0"),
         }
     }
 }
@@ -67,20 +66,20 @@ pub struct WsTicket {
 
 pub type TicketStore = Arc<Mutex<HashMap<String, WsTicket>>>;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct PairResponse {
     pub token: String,
     pub device_id: String,
     pub expires_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct WsTicketResponse {
     pub ticket: String,
     pub expires_ms: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DeviceView {
     pub id: String,
     pub name: String,
@@ -103,7 +102,7 @@ impl From<DeviceRecord> for DeviceView {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct PairInput {
     pub code: String,
     pub name: Option<String>,
@@ -148,7 +147,10 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    raw.strip_prefix("Bearer ").map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
+    raw.strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 pub async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<AuthContext, ApiError> {
@@ -204,7 +206,10 @@ pub async fn auth_middleware(
     if is_public(&path) || path == "/ws" || path == "/api/v1/events/stream" {
         return next.run(request).await;
     }
-    let Some(ConnectInfo(peer)) = request.extensions().get::<ConnectInfo<SocketAddr>>().cloned()
+    let Some(ConnectInfo(peer)) = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .cloned()
     else {
         return ApiError::Unauthorized.into_response();
     };
@@ -242,6 +247,7 @@ pub async fn auth_middleware(
     next.run(request).await
 }
 
+#[utoipa::path(post, path = "/api/v1/auth/pair", tag = "Auth", request_body = PairInput, responses((status = 200, description = "Scoped device token", body = PairResponse)))]
 pub async fn pair(
     State(state): State<AppState>,
     Json(input): Json<PairInput>,
@@ -279,6 +285,7 @@ pub async fn pair(
     }))
 }
 
+#[utoipa::path(post, path = "/api/v1/auth/ws-ticket", tag = "Auth", responses((status = 200, description = "Single-use WS ticket", body = WsTicketResponse)))]
 pub async fn ws_ticket(
     State(state): State<AppState>,
     request: Request,
@@ -290,13 +297,17 @@ pub async fn ws_ticket(
         .ok_or(ApiError::Unauthorized)?;
     let ticket = random_token()?;
     let expires_ms = now_ms() + 60_000;
-    state.tickets.lock().map_err(|e| ApiError::Internal(e.to_string()))?.insert(
-        ticket.clone(),
-        WsTicket {
-            device_id: context.device_id.clone(),
-            expires_at_ms: expires_ms,
-        },
-    );
+    state
+        .tickets
+        .lock()
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .insert(
+            ticket.clone(),
+            WsTicket {
+                device_id: context.device_id.clone(),
+                expires_at_ms: expires_ms,
+            },
+        );
     Ok(Json(WsTicketResponse { ticket, expires_ms }))
 }
 
@@ -318,11 +329,13 @@ pub fn consume_ws_ticket(ticket: &str, device_id: Option<&DeviceId>, state: &App
     true
 }
 
+#[utoipa::path(get, path = "/api/v1/devices", tag = "Auth", responses((status = 200, description = "Devices", body = [DeviceView])))]
 pub async fn devices(State(state): State<AppState>) -> Result<Json<Vec<DeviceView>>, ApiError> {
     let records = state.store.devices().await?;
     Ok(Json(records.into_iter().map(DeviceView::from).collect()))
 }
 
+#[utoipa::path(delete, path = "/api/v1/devices/{id}", tag = "Auth", responses((status = 204, description = "Device revoked")))]
 pub async fn revoke_device(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,

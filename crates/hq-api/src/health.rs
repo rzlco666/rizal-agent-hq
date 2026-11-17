@@ -2,7 +2,7 @@ use crate::{error::ApiError, state::AppState};
 use axum::{Json, extract::State};
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DbHealth {
     pub ok: bool,
     pub journal_mode: String,
@@ -11,7 +11,7 @@ pub struct DbHealth {
     pub migrations: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HealthResponse {
     pub ok: bool,
     pub seq: i64,
@@ -21,6 +21,7 @@ pub struct HealthResponse {
     pub db: DbHealth,
 }
 
+#[utoipa::path(get, path = "/api/v1/health", tag = "Meta", responses((status = 200, description = "Health", body = HealthResponse)))]
 pub async fn health(State(state): State<AppState>) -> Result<Json<HealthResponse>, ApiError> {
     let report = state.store.health().await?;
     let seq = state.store.last_seq().await?.0.max(report.last_seq);
@@ -41,6 +42,8 @@ pub async fn health(State(state): State<AppState>) -> Result<Json<HealthResponse
 }
 
 /// Legacy path kept for S03 probes; same payload as `/api/v1/health`.
-pub async fn health_legacy(State(state): State<AppState>) -> Result<Json<HealthResponse>, ApiError> {
+pub async fn health_legacy(
+    State(state): State<AppState>,
+) -> Result<Json<HealthResponse>, ApiError> {
     health(State(state)).await
 }

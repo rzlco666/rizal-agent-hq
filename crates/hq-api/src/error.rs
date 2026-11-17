@@ -7,7 +7,7 @@ use hq_store::StoreError;
 use serde::Serialize;
 use serde_json::json;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct ErrorBody {
     pub code: &'static str,
     pub message: String,
