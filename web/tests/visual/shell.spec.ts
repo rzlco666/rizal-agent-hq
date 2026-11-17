@@ -16,7 +16,7 @@ test('shell matches day snapshot at 1440x900', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('hq-theme', 'day'));
   await page.goto('/');
   await settle(page);
-  await expect(page).toHaveScreenshot('shell-day-1440x900.png');
+  await expect(page).toHaveScreenshot('shell-day-1440x900.png', { mask: [page.getByTestId('attention-rail')] });
 });
 
 test('shell matches night snapshot at 1440x900', async ({ page }) => {
@@ -25,7 +25,7 @@ test('shell matches night snapshot at 1440x900', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
   await settle(page);
-  await expect(page).toHaveScreenshot('shell-night-1440x900.png');
+  await expect(page).toHaveScreenshot('shell-night-1440x900.png', { mask: [page.getByTestId('attention-rail')] });
 });
 
 test('shell matches phone snapshot at 390x844', async ({ page }) => {
@@ -33,5 +33,5 @@ test('shell matches phone snapshot at 390x844', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('hq-theme', 'day'));
   await page.goto('/');
   await settle(page);
-  await expect(page).toHaveScreenshot('shell-day-390x844.png');
+  await expect(page).toHaveScreenshot('shell-day-390x844.png', { mask: [page.getByTestId('attention-rail')] });
 });

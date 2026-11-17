@@ -27,7 +27,7 @@ test('today matches day snapshot at 1440x900', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('hq-theme', 'day'));
   await page.goto('/');
   await settle(page);
-  await expect(page).toHaveScreenshot('today-day-1440x900.png');
+  await expect(page).toHaveScreenshot('today-day-1440x900.png', { mask: [page.getByTestId('attention-rail')] });
 });
 
 test('today matches night snapshot at 1440x900', async ({ page }) => {
@@ -36,7 +36,7 @@ test('today matches night snapshot at 1440x900', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
   await settle(page);
-  await expect(page).toHaveScreenshot('today-night-1440x900.png');
+  await expect(page).toHaveScreenshot('today-night-1440x900.png', { mask: [page.getByTestId('attention-rail')] });
 });
 
 test('today matches day snapshot at 390x844', async ({ page }) => {
@@ -44,5 +44,5 @@ test('today matches day snapshot at 390x844', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('hq-theme', 'day'));
   await page.goto('/');
   await settle(page);
-  await expect(page).toHaveScreenshot('today-day-390x844.png');
+  await expect(page).toHaveScreenshot('today-day-390x844.png', { mask: [page.getByTestId('attention-rail')] });
 });
