@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use crate::{Patch, Seq};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 pub struct PatchRing {

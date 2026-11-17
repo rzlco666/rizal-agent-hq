@@ -43,9 +43,16 @@ fn ring_returns_only_newer_patches() {
     use hq_store::PatchRing;
     let mut ring = PatchRing::new(3);
     fn patch(seq: i64) -> Patch {
-        Patch { seq: Seq(seq), upserts: vec![], deletes: vec![] }
+        Patch {
+            seq: Seq(seq),
+            upserts: vec![],
+            deletes: vec![],
+        }
     }
-    ring.push(patch(1)); ring.push(patch(2)); ring.push(patch(3)); ring.push(patch(4));
+    ring.push(patch(1));
+    ring.push(patch(2));
+    ring.push(patch(3));
+    ring.push(patch(4));
     assert_eq!(ring.since(Seq(2)).unwrap().len(), 2);
     assert!(ring.since(Seq(0)).is_none());
 }

@@ -1,6 +1,6 @@
 use crate::Store;
-use hq_core::{Event, EventDraft, redact_json};
 use crate::StoreError;
+use hq_core::{Event, EventDraft, redact_json};
 
 pub struct Ingestor {
     pub store: Store,
@@ -39,6 +39,9 @@ impl Ingestor {
         let before = drafts.len();
         let accepted = self.store.append(drafts).await?;
         let duplicates = before.saturating_sub(accepted.len());
-        Ok(IngestReport { accepted, duplicates })
+        Ok(IngestReport {
+            accepted,
+            duplicates,
+        })
     }
 }
