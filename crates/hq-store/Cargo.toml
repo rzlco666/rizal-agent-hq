@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 hq-core = { path = "../hq-core" }
+hq-humanize = { path = "../hq-humanize" }
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"

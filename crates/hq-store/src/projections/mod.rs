@@ -10,7 +10,9 @@ pub trait Projector: Send + Sync {
 
 pub mod agents;
 pub mod alerts;
+pub mod logs;
 pub mod system_health;
+pub mod tasks;
 pub mod usage;
 
 pub fn apply_agent(tx: &Transaction<'_>, ev: &Event) -> Result<(), StoreError> {

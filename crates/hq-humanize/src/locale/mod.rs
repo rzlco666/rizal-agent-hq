@@ -5,9 +5,12 @@ mod zh;
 use crate::HumanizeError;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Locale {
+    #[default]
     Id,
     En,
     Zh,
@@ -40,8 +43,3 @@ impl Locale {
     }
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        Self::Id
-    }
-}

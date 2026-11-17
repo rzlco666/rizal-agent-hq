@@ -47,3 +47,34 @@ pub fn humanize(fact: &Fact) -> Sentence {
         params,
     }
 }
+
+/// Severity carried by a log event; stored as a lowercase token.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub fn parse(input: &str) -> Self {
+        match input.trim().to_ascii_lowercase().as_str() {
+            "debug" => Self::Debug,
+            "warn" | "warning" => Self::Warn,
+            "error" => Self::Error,
+            _ => Self::Info,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+}

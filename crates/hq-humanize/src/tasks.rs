@@ -24,9 +24,16 @@ pub struct TaskProjection {
 }
 
 /// Deterministic, side-effect-free session-to-task projection.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TaskDeriver;
+#[derive(Debug, Clone, Copy)]
+pub struct TaskDeriver {
+    pub max_steps: usize,
+}
 
+impl Default for TaskDeriver {
+    fn default() -> Self {
+        Self { max_steps: 6 }
+    }
+}
 impl TaskDeriver {
     pub fn derive(&self, events: &[Event]) -> Vec<TaskProjection> {
         let mut ordered: Vec<&Event> = events.iter().collect();
@@ -40,7 +47,7 @@ impl TaskDeriver {
         }
         groups
             .into_iter()
-            .map(|((agent, session), evs)| derive_task(agent, session, &evs))
+            .map(|((agent, session), evs)| derive_task(agent, session, &evs, self.max_steps))
             .collect()
     }
 }
@@ -56,7 +63,12 @@ fn session_parts(subject: &Subject) -> Option<(String, String)> {
     }
 }
 
-fn derive_task(agent: String, session: String, events: &[&Event]) -> TaskProjection {
+fn derive_task(
+    agent: String,
+    session: String,
+    events: &[&Event],
+    max_steps: usize,
+) -> TaskProjection {
     let started_ms = events
         .iter()
         .find(|ev| ev.draft.kind == EventKind::SessionStarted)
@@ -74,7 +86,7 @@ fn derive_task(agent: String, session: String, events: &[&Event]) -> TaskProject
     for ev in events {
         if let Some(label) = activity_sentence(&agent, ev)
             && seen.insert(label.key.clone())
-            && steps.len() < 6
+            && steps.len() < max_steps
         {
             steps.push(TaskStepProjection {
                 label,
