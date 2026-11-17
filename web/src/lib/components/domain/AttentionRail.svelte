@@ -72,7 +72,7 @@
     <header>
       <h2>{t('attention.title')}</h2>
       <span class="count mono" data-testid="attention-count" aria-live="polite">
-        {entries.length}
+        <span data-testid="alert-count">{entries.length}</span>
       </span>
     </header>
 

@@ -25,8 +25,12 @@ const statusOrder: Record<string, number> = {
   offline: 5
 };
 
+export function canonicalStatus(value: string): string {
+  return value === 'menunggurizal' ? 'menunggu-rizal' : value;
+}
+
 export function statusRank(status: string): number {
-  return statusOrder[status] ?? statusOrder.offline;
+  return statusOrder[canonicalStatus(status)] ?? statusOrder.offline;
 }
 
 export function sortAgents<T extends { id: string; status: string; alerts?: number }>(

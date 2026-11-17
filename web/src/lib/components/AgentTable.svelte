@@ -4,7 +4,7 @@
   import AgentMonogram from './domain/AgentMonogram.svelte';
   import StatusDot from './ui/StatusDot.svelte';
   import Skeleton from './ui/Skeleton.svelte';
-  import { sortAgents } from './today';
+  import { canonicalStatus, sortAgents } from './today';
 
   type Status = 'bekerja' | 'berpikir' | 'menunggu-rizal' | 'santai' | 'offline' | 'error';
 
@@ -28,8 +28,9 @@
   const visible = $derived(expanded ? rows : rows.slice(0, 6));
 
   function asStatus(value: string): Status {
+    const normalized = canonicalStatus(value);
     return (['bekerja', 'berpikir', 'menunggu-rizal', 'santai', 'offline', 'error'] as const).find(
-      (status) => status === value
+      (status) => status === normalized
     ) ?? 'offline';
   }
 

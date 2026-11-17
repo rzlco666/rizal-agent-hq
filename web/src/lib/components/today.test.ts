@@ -47,3 +47,6 @@ test('ledger points ignore events outside the selected window', () => {
   );
   expect(points).toHaveLength(1);
 });
+test('status rank accepts the API status spelling without hyphens', () => {
+  expect(statusRank('menunggurizal')).toBe(statusRank('menunggu-rizal'));
+});
