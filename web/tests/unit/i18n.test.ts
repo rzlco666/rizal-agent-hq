@@ -5,7 +5,9 @@ import id from '$lib/i18n/id.json';
 import zh from '$lib/i18n/zh.json';
 import { beforeEach, expect, test } from 'vitest';
 
-const keys = (obj: Record<string, string>) => Object.keys(obj).sort();
+function keys(catalog: Record<string, string>): string[] {
+  return Object.keys(catalog).sort();
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -29,6 +31,8 @@ test('all locales have the same keys', () => {
 test('params replace without html injection', () => {
   const payload = '<img src=x onerror=alert(1)>';
   const rendered = t('attention.count', { count: payload });
-  expect(rendered).not.toContain('<img');
-  expect(rendered).toContain(payload);
+  const host = document.createElement('div');
+  host.textContent = rendered;
+  expect(host.querySelector('img')).toBeNull();
+  expect(host.textContent).toContain(payload);
 });

@@ -6,6 +6,7 @@ export default defineConfig({
   resolve: { conditions: ['browser'] },
   test: {
     environment: 'jsdom',
+    environmentOptions: { jsdom: { url: 'http://localhost/' } },
     include: ['src/**/*.test.ts', 'tests/unit/**/*.test.ts'],
     setupFiles: ['tests/unit/setup.ts'],
     restoreMocks: true

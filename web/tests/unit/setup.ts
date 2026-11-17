@@ -1,6 +1,23 @@
 import '@testing-library/jest-dom/vitest';
 import '@testing-library/svelte/vitest';
 
+
+if (typeof localStorage === 'undefined') {
+  const entries = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => void entries.set(key, String(value)),
+      removeItem: (key: string) => void entries.delete(key),
+      clear: () => entries.clear(),
+      key: (index: number) => [...entries.keys()][index] ?? null,
+      get length() {
+        return entries.size;
+      }
+    }
+  });
+}
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
