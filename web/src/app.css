@@ -1,0 +1,196 @@
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root,
+:root[data-theme='day'] {
+  color-scheme: light;
+
+  --ground: #F4F1EA;
+  --surface: #FFFFFF;
+  --raised: #FFFFFF;
+  --well: #ECE8DF;
+  --scrim: rgb(23 22 20 / 32%);
+
+  --hairline: rgb(23 22 20 / 10%);
+  --hairline-strong: rgb(23 22 20 / 18%);
+  --control-edge: #6F6A62;
+
+  --ink-12: #171614;
+  --ink-11: #55514A;
+  --ink-10: #6F6A62;
+
+  --attention: #A65A00;
+  --attention-tint: #FCEBD6;
+  --critical: #B3261E;
+  --success: #1B6B45;
+  --info: #245C8A;
+  --focus: #55514A;
+
+  --hover: rgb(23 22 20 / 4%);
+  --pressed: rgb(23 22 20 / 8%);
+  --primary-bg: #171614;
+  --primary-fg: #F4F1EA;
+  --primary-hover: #2A2824;
+  --on-critical: #FFFFFF;
+
+  --shadow-color: 23 22 20;
+  --shadow-ring: 0 0 0 1px var(--hairline);
+  --shadow-card: var(--shadow-ring),
+    0 1px 2px rgb(var(--shadow-color) / 8%),
+    0 3px 4px -2px rgb(var(--shadow-color) / 6%);
+  --shadow-button: var(--shadow-ring),
+    0 1px 2px rgb(var(--shadow-color) / 10%);
+  --shadow-menu: var(--shadow-ring),
+    0 4px 8px -4px rgb(var(--shadow-color) / 16%);
+  --shadow-modal: var(--shadow-ring),
+    0 6px 8px -4px rgb(var(--shadow-color) / 18%);
+  --shadow-sheet: 0 -1px 2px rgb(var(--shadow-color) / 8%),
+    0 -8px 16px -8px rgb(var(--shadow-color) / 18%);
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-modal: 12px;
+  --radius-keycap: 4px;
+  --radius-dot: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --dur-1: 150ms;
+  --dur-2: 200ms;
+  --dur-3: 240ms;
+  --dur-4: 300ms;
+
+  --font-cjk: 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei',
+    'PingFang SC', sans-serif;
+  --font-sans: 'IBM Plex Sans', var(--font-cjk), system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+:root[data-theme='night'] {
+  color-scheme: dark;
+
+  --ground: #0C0C0B;
+  --surface: #151514;
+  --raised: #1D1D1B;
+  --well: #101010;
+  --scrim: rgb(0 0 0 / 72%);
+
+  --hairline: rgb(242 239 233 / 12%);
+  --hairline-strong: rgb(242 239 233 / 20%);
+  --control-edge: #8E8980;
+
+  --ink-12: #F2EFE9;
+  --ink-11: #B5B0A7;
+  --ink-10: #8E8980;
+
+  --attention: #F2A63C;
+  --attention-tint: #3A2A12;
+  --critical: #FF6B5E;
+  --success: #4CC38A;
+  --info: #6FA8DC;
+  --focus: #B5B0A7;
+
+  --hover: rgb(242 239 233 / 5%);
+  --pressed: rgb(242 239 233 / 9%);
+  --primary-bg: #F2EFE9;
+  --primary-fg: #0C0C0B;
+  --primary-hover: #E4E0D8;
+  --on-critical: #0C0C0B;
+
+  --shadow-color: 0 0 0;
+  --shadow-ring: 0 0 0 1px var(--hairline-strong);
+  --shadow-card: var(--shadow-ring), 0 1px 2px rgb(0 0 0 / 60%);
+  --shadow-button: var(--shadow-ring), 0 1px 2px rgb(0 0 0 / 60%);
+  --shadow-menu: var(--shadow-ring), 0 4px 8px -4px rgb(0 0 0 / 70%);
+  --shadow-modal: var(--shadow-ring), 0 6px 8px -4px rgb(0 0 0 / 80%);
+  --shadow-sheet: 0 -1px 2px rgb(0 0 0 / 50%),
+    0 -8px 16px -8px rgb(0 0 0 / 70%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--ink-12);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.num,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
