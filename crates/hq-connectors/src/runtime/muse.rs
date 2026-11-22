@@ -117,7 +117,7 @@ fn heartbeat_event(now_ms: i64, agent: &str, heartbeat: &Heartbeat) -> EventDraf
             "cpu_percent": 0.0,
             "evidence": EvidenceLevel::L2,
             "heartbeat_age_ms": age_ms,
-            "role": heartbeat.role,
+            "role": redact_text(&heartbeat.role).chars().take(200).collect::<String>(),
             "source": "muse heartbeat v2",
         }),
     }

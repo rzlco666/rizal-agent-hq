@@ -3,6 +3,7 @@
   "cursor": "agent:cursor",
   "Muse": "agent:muse",
   "mcp": "agent:mcp/*",
-  "omp-workers-agg": "agent:omp/worker/*",
+  "omp-workers-agg": "agent:omp/worker/agg",
+  "omp-workers": "agent:omp/worker/agg",
   "coding-agents": "agent:*"
 }

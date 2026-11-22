@@ -1,8 +1,8 @@
 use hq_connectors::parity::{compare_states, fetch_state, parse_aliases};
 use hq_connectors::probes::Probes;
 use hq_connectors::runtime::{
-    Clock, CollectCtx, CursorAdapter, MuseAdapter, OmpDbAdapter, ProcessPresenceAdapter,
-    RuntimeAdapter, SystemHealthEmitter,
+    Clock, CollectCtx, CursorAdapter, MuseAdapter, OmpAdapter, OmpDbAdapter,
+    ProcessPresenceAdapter, RuntimeAdapter, SystemHealthEmitter,
 };
 use hq_core::{EventDraft, EventKind};
 use std::collections::HashSet;
@@ -169,6 +169,9 @@ async fn collect_once(args: &[String]) -> i32 {
         processes: probes.processes.clone(),
     };
     let mut events = adapter.observe(&ctx).await.unwrap_or_default();
+    let omp = OmpAdapter::new();
+    omp.refresh_if_cold();
+    events.extend(omp.observe_cached(&ctx));
     events.extend(
         OmpDbAdapter::new(home.join(".omp").join("stats.db"))
             .observe(&ctx)
@@ -327,6 +330,14 @@ async fn parity(args: &[String]) -> i32 {
     report.usage_diff_pct = reports.iter().fold(report.usage_diff_pct, |max, sample| {
         max.max(sample.usage_diff_pct)
     });
+    let mut missing = std::collections::BTreeSet::new();
+    let mut extra = std::collections::BTreeSet::new();
+    for sample in reports.iter().chain(std::iter::once(&report)) {
+        missing.extend(sample.missing_from_candidate.iter().cloned());
+        extra.extend(sample.extra_in_candidate.iter().cloned());
+    }
+    report.missing_from_candidate = missing.into_iter().collect();
+    report.extra_in_candidate = extra.into_iter().collect();
     report.verdict = if report.missing_from_candidate.is_empty()
         && report.status_match_pct >= 90.0
         && report.usage_diff_pct <= 15.0
@@ -454,7 +465,7 @@ async fn device(args: &[String]) -> i32 {
 fn event_json(event: &EventDraft) -> serde_json::Value {
     serde_json::json!({
         "event_ts_ms": event.event_ts_ms,
-        "kind": if event.kind == EventKind::SystemHealthObserved { "system_health_observed" } else { "agent_observed" },
+        "kind": serde_json::to_value(event.kind).unwrap_or_else(|_| serde_json::json!("unknown")),
         "subject": event.subject.key(),
         "source": event.source.0,
         "payload": event.payload,

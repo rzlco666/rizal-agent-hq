@@ -251,14 +251,14 @@ impl OmpDbAdapter {
             events.push(EventDraft {
                 event_ts_ms: last_ms.max(1),
                 kind: EventKind::AgentObserved,
-                subject: Subject::Agent(AgentId("agent:omp/worker/omp-workers-agg".to_owned())),
+                subject: Subject::Agent(AgentId("agent:omp/worker/agg".to_owned())),
                 source: SourceId("local".to_owned()),
                 correlation_id: None,
                 causation_id: None,
                 idempotency_key: Some(format!("omp:db:workers-agg:{last_ms}")),
                 payload: json!({
                     "observed_at_ms": last_ms.max(1),
-                    "runtime_key": "omp:workers:agg",
+                    "runtime_key": "omp:worker:agg",
                     "status": observed.status,
                     "status_reason": observed.reason,
                     "kind": AgentKind::Worker,

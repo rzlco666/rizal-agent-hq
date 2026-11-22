@@ -94,3 +94,35 @@ async fn missing_heartbeats_are_empty() {
         .unwrap();
     assert!(out.is_empty());
 }
+
+#[tokio::test]
+async fn heartbeat_role_is_redacted_too() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("heartbeats")).unwrap();
+    let heartbeat = json!({
+        "agent": "muse",
+        "at": 1_000_000,
+        "role": "ghp_abcdefghijklmnop",
+        "status": "bekerja",
+        "task": "meninjau rilis"
+    });
+    fs::write(
+        dir.path().join("heartbeats/muse.json"),
+        serde_json::to_string(&heartbeat).unwrap(),
+    )
+    .unwrap();
+    let out = MuseAdapter::new(dir.path())
+        .observe(&ctx_at(1_000_000))
+        .await
+        .unwrap();
+    let event = out
+        .iter()
+        .find(|d| d.subject.key() == "agent:muse")
+        .unwrap();
+    assert_eq!(event.payload["role"], "[REDACTED:github]");
+    assert!(
+        !serde_json::to_string(&event.payload)
+            .unwrap()
+            .contains("ghp_abcdefghijklmnop")
+    );
+}

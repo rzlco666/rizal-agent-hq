@@ -116,9 +116,13 @@ impl OmpAdapter {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/"));
-        Self::with_home(home)
+        let program = std::env::var_os("HQ_OMP_STATS_BIN")
+            .map(|path| PathBuf::from(path).to_string_lossy().into_owned())
+            .unwrap_or_else(|| "omp".to_owned());
+        let mut adapter = Self::with_home(home);
+        adapter.program = program;
+        adapter
     }
-
     pub fn with_home(home: PathBuf) -> Self {
         Self {
             home,
@@ -169,30 +173,46 @@ impl OmpAdapter {
             .map(|stats| omp_usage_events(&stats, now_ms))
             .unwrap_or_default()
     }
+
+    /// Refresh path for one-shot collectors: run the bounded command only when
+    /// no fresh cached stats exist.
+    pub fn refresh_if_cold(&self) -> bool {
+        if self.cached().is_some() {
+            return false;
+        }
+        self.stats().is_some()
+    }
+
+    /// Snapshot path: never runs a command, only emits fresh cached stats.
+    pub fn observe_cached(&self, ctx: &crate::runtime::CollectCtx) -> Vec<EventDraft> {
+        self.cached()
+            .map(|stats| events_from_stats(&stats, ctx.now_ms, &ctx.processes))
+            .unwrap_or_default()
+    }
 }
 
 #[async_trait::async_trait]
 impl crate::runtime::RuntimeAdapter for OmpAdapter {
     async fn observe(&self, ctx: &crate::runtime::CollectCtx) -> Result<Vec<EventDraft>, String> {
-        let Some(stats) = self.stats() else {
-            return Ok(Vec::new());
-        };
-        let mut events = omp_usage_events(&stats, ctx.now_ms);
-        let processes: Vec<&ProcessInfo> = ctx
-            .processes
-            .iter()
-            .filter(|process| crate::runtime::classify(process) == Some("omp"))
-            .collect();
-        let latest = (stats.overall.last_timestamp > 0).then(|| OmpMessageMeta {
-            timestamp_ms: stats.overall.last_timestamp,
-            stop_reason: None,
-            error_message: None,
-            folder: stats.by_folder.first().map(|folder| folder.folder.clone()),
-        });
-        let activity = omp_status(processes.first().copied().cloned(), latest, ctx.now_ms);
-        events.insert(0, omp_agent_event(&processes, activity, ctx.now_ms));
-        Ok(events)
+        Ok(self.observe_cached(ctx))
     }
+}
+
+fn events_from_stats(stats: &OmpStats, now_ms: i64, processes: &[ProcessInfo]) -> Vec<EventDraft> {
+    let mut events = omp_usage_events(stats, now_ms);
+    let omp: Vec<&ProcessInfo> = processes
+        .iter()
+        .filter(|process| crate::runtime::classify(process) == Some("omp"))
+        .collect();
+    let latest = (stats.overall.last_timestamp > 0).then(|| OmpMessageMeta {
+        timestamp_ms: stats.overall.last_timestamp,
+        stop_reason: None,
+        error_message: None,
+        folder: stats.by_folder.first().map(|folder| folder.folder.clone()),
+    });
+    let activity = omp_status(omp.first().copied().cloned(), latest, now_ms);
+    events.insert(0, omp_agent_event(&omp, activity, now_ms));
+    events
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -144,8 +144,24 @@ async fn workers_are_capped_at_eight_plus_aggregate() {
     assert!(
         workers
             .iter()
-            .any(|d| d.subject.key() == "agent:omp/worker/omp-workers-agg")
+            .any(|d| d.subject.key() == "agent:omp/worker/agg")
     );
+}
+
+#[tokio::test]
+async fn aggregate_worker_uses_canonical_runtime_key() {
+    let types = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    let db = fixture_omp_db_with_worker_types(&types);
+    let out = OmpDbAdapter::new(db.path().join("stats.db"))
+        .observe(&ctx())
+        .await
+        .unwrap();
+    let agg = out
+        .iter()
+        .find(|d| d.subject.key() == "agent:omp/worker/agg")
+        .unwrap();
+    assert_eq!(agg.payload["runtime_key"], "omp:worker:agg");
+    assert_eq!(agg.payload["worker_type"], "omp-workers-agg");
 }
 
 #[tokio::test]

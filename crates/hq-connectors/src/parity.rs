@@ -178,14 +178,31 @@ fn selected(
 }
 
 fn canonical_id(id: &str, aliases: &HashMap<String, String>) -> String {
+    if let Some(full) = id
+        .strip_prefix("omp-s-")
+        .filter(|suffix| !suffix.is_empty())
+    {
+        return format!("agent:omp/session/{full}");
+    }
+    if let Some(full) = id
+        .strip_prefix("omp-w-")
+        .filter(|suffix| !suffix.is_empty())
+    {
+        return format!("agent:omp/worker/{full}");
+    }
     let alias = aliases
         .get(id)
         .or_else(|| aliases.get(&id.to_ascii_lowercase()));
     match alias.map(String::as_str) {
-        Some(target) => match target.strip_suffix('*') {
-            Some(prefix) => prefix.trim_end_matches('/').to_owned(),
-            None => target.to_owned(),
-        },
+        Some(target) if target.ends_with('*') => {
+            let stem = target.trim_end_matches('*').trim_end_matches('/');
+            if stem.is_empty() {
+                id.to_owned()
+            } else {
+                format!("{stem}/{id}")
+            }
+        }
+        Some(target) => target.to_owned(),
         None => id.to_owned(),
     }
 }
