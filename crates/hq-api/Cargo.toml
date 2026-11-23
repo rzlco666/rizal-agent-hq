@@ -9,7 +9,7 @@ hq-core = { path = "../hq-core" }
 hq-store = { path = "../hq-store" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { workspace = true, features = ["full"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = "0.29"
 futures = "0.3"
 tokio-stream = "0.1"
 tower = "0.5"
@@ -29,4 +29,4 @@ ulid = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"
-tokio-tungstenite = "0.24"
+tokio-tungstenite = "0.29"
